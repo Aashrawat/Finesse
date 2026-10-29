@@ -13,6 +13,8 @@ __pycache__/
 downloades/
 downloads/
 chroma_db/
+vector_db/
+exports/
 *.wav
 *.mp3
 *.mp4

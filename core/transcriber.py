@@ -1,7 +1,8 @@
 import whisper
 import os
-import requests
-from pydub import AudioSegment
+from dotenv import load_dotenv
+
+load_dotenv()
 
 WHISPER_MODEL = os.getenv("WHISPER_MODEL","small")
 
@@ -16,6 +17,14 @@ def load_model():
         print("Whisper model loaded successfully.")
     return _model 
 
+def detect_language(audio_path: str) -> str:
+    """Detect the spoken language (ISO code, e.g. 'en', 'hi', 'es') from the first 30s of audio."""
+    model = load_model()
+    audio = whisper.pad_or_trim(whisper.load_audio(audio_path))
+    mel = whisper.log_mel_spectrogram(audio, n_mels=model.dims.n_mels).to(model.device)
+    _, probs = model.detect_language(mel)
+    return max(probs, key=probs.get)
+
 def transcribe_chunk(chunk_path: str, translate : bool = False) -> str:
 
     model = load_model()  
@@ -25,7 +34,14 @@ def transcribe_chunk(chunk_path: str, translate : bool = False) -> str:
     result = model.transcribe(chunk_path, task=task)  
     return result["text"]  
 
-def transcribe_all(chunks: list, translate : bool = False) -> str:
+def transcribe_all(chunks: list, translate : bool | None = False) -> str:
+    """translate=True/False forces the task; translate=None auto-detects the language
+    and translates to English only when the audio is not English."""
+    if translate is None:
+        language = detect_language(chunks[0])
+        translate = language != "en"
+        print(f"Detected language: {language} -> {'translating to English' if translate else 'no translation needed'}")
+
     full_transcript = ""
     for i, chunk in enumerate(chunks):
         print(f"Transcribing chunk {i+1} ...")
