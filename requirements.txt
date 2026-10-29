@@ -28,6 +28,28 @@ transformers>=4.44.0
 # ---- Export (PDF / TXT) ----
 fpdf2>=2.7.9                # PDF generation (TXT export needs no extra package)
 
+# ---- Backend API ----
+fastapi>=0.115.0
+uvicorn>=0.30.0
+python-multipart>=0.0.9     # file uploads
+
+# ---- Multi-agent research (search agent -> reader agent -> writer -> critic) ----
+tavily-python>=0.3.0        # web search; needs TAVILY_API_KEY in .env
+beautifulsoup4>=4.12.0      # page scraping for the reader agent
+requests>=2.31.0
+
 # ---- Config / utilities ----
 python-dotenv>=1.0.1        # load OPENAI_API_KEY from .env
 tqdm>=4.66.0
+
+# ---- Knowledge-base chatbot (OpenAI SDK + ChromaDB RAG) ----
+openai>=1.30.0
+chromadb>=0.5.0
+tiktoken>=0.7.0         # token-based chunking
+pypdf>=5.0.0              # PDF loader
+python-docx>=1.1.0        # DOCX loader
+
+# ---- Accounts (sign up / log in) ----
+pymongo>=4.7             # MongoDB driver; set MONGODB_URI in .env
+dnspython>=2.4            # needed for mongodb+srv:// (Atlas) connection strings
+bcrypt>=4.1              # password hashing

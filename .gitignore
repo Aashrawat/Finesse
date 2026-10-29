@@ -15,6 +15,12 @@ downloads/
 chroma_db/
 vector_db/
 exports/
+uploads/
+data/
+
+# Frontend
+node_modules/
+frontend/dist/
 *.wav
 *.mp3
 *.mp4
@@ -25,3 +31,8 @@ exports/
 .DS_Store
 Thumbs.db
 .idea/
+
+# Knowledge-base chatbot: your documents and request logs stay local
+knowledge_base/*
+!knowledge_base/.gitkeep
+logs/

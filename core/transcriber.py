@@ -25,14 +25,16 @@ def detect_language(audio_path: str) -> str:
     _, probs = model.detect_language(mel)
     return max(probs, key=probs.get)
 
-def transcribe_chunk(chunk_path: str, translate : bool = False) -> str:
-
-    model = load_model()  
+def transcribe_chunk_full(chunk_path: str, translate : bool = False) -> dict:
+    """Full Whisper result, including 'segments' with start/end times in seconds."""
+    model = load_model()
 
     task = "translate" if translate else "transcribe"
 
-    result = model.transcribe(chunk_path, task=task)  
-    return result["text"]  
+    return model.transcribe(chunk_path, task=task)
+
+def transcribe_chunk(chunk_path: str, translate : bool = False) -> str:
+    return transcribe_chunk_full(chunk_path, translate=translate)["text"]
 
 def transcribe_all(chunks: list, translate : bool | None = False) -> str:
     """translate=True/False forces the task; translate=None auto-detects the language
