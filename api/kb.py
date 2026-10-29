@@ -1,15 +1,4 @@
-"""HTTP endpoints for the knowledge-base chatbot.
 
-    POST   /api/ingest                  ingest the documents folder (skips unchanged files)
-    GET    /api/documents               ingested documents + files waiting to be ingested
-    POST   /api/chat                    streaming chat (Server-Sent Events)
-    GET    /api/conversations           this session's conversations
-    GET    /api/conversations/{id}
-    DELETE /api/conversations/{id}
-
-Each browser identifies itself with an `X-Session-Id` header (a random id it generates once).
-Conversations are private to that session id.
-"""
 
 import asyncio
 
