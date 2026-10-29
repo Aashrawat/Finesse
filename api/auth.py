@@ -1,14 +1,4 @@
-"""Account endpoints.
 
-    POST   /api/auth/signup    {name, email, password}  -> creates the account and logs in
-    POST   /api/auth/login     {email, password}
-    POST   /api/auth/logout
-    GET    /api/auth/me        -> {user} (user is null when logged out)
-    PATCH  /api/auth/me        {name}
-
-A login is an HttpOnly, SameSite=Lax cookie, so page scripts never see it and other sites can't
-make the browser send it on a cross-site POST.
-"""
 
 import os
 
