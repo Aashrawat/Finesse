@@ -1,0 +1,25 @@
+# Secrets
+.env
+
+# Virtual environment
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Generated data
+downloades/
+downloads/
+chroma_db/
+*.wav
+*.mp3
+*.mp4
+*.m4a
+*.webm
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
