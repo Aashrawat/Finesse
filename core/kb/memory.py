@@ -8,12 +8,14 @@ A conversation looks like:
     {id, session_id, title, created_at, updated_at,
      summary,            # running summary of the older turns
      summarized_upto,    # messages[:summarized_upto] are folded into `summary`
-     messages: [{id, role, content, sources, created_at, stopped}]}
+     messages: [{id, role, content, sources, created_at, stopped,
+                 attachments?: [{id, name, kind, mime, size}]}]}   # files live in <session>/<conversation id>/
 """
 
 import json
 import os
 import re
+import shutil
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -108,6 +110,7 @@ class FileConversationStore:
         if not (valid_session_id(session_id) and valid_conversation_id(conversation_id)):
             return False
         path = self._path(session_id, conversation_id)
+        shutil.rmtree(os.path.join(self._dir(session_id), conversation_id), ignore_errors=True)  # attached files
         if os.path.exists(path):
             os.remove(path)
             return True
@@ -151,11 +154,16 @@ def window_start(messages: list[dict[str, Any]]) -> int:
     return start
 
 
-def recent_history(conversation: dict[str, Any]) -> list[dict[str, str]]:
-    """The messages to put in the prompt, as {role, content}."""
+def recent_messages(conversation: dict[str, Any]) -> list[dict[str, Any]]:
+    """The stored messages inside the prompt window (with their attachments)."""
     messages = conversation["messages"]
     start = max(window_start(messages), conversation.get("summarized_upto", 0))
-    return [{"role": m["role"], "content": m["content"]} for m in messages[start:]]
+    return messages[start:]
+
+
+def recent_history(conversation: dict[str, Any]) -> list[dict[str, str]]:
+    """The messages to put in the prompt, as {role, content}."""
+    return [{"role": m["role"], "content": m["content"]} for m in recent_messages(conversation)]
 
 
 def compress(session_id: str, conversation_id: str, summarize) -> None:

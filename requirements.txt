@@ -46,7 +46,9 @@ tqdm>=4.66.0
 openai>=1.30.0
 chromadb>=0.5.0
 tiktoken>=0.7.0         # token-based chunking
-pypdf>=5.0.0              # PDF loader
+pypdf>=5.0.0              # PDF loader (fallback if PyMuPDF is unavailable)
+pymupdf>=1.25             # PDF text + page rendering (scanned pages go to GPT vision)
+pillow>=11.0              # image decoding / resizing for the vision model
 python-docx>=1.1.0        # DOCX loader
 
 # ---- Accounts (sign up / log in) ----

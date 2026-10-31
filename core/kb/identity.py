@@ -6,9 +6,7 @@ reply never varies and costs nothing.
 
 import re
 
-IDENTITY_REPLY = (
-    "Hello! I'm your friendly assistant. I am Finesse and is created by Aashrawat. How can I help you today?"
-)
+IDENTITY_REPLY = "I am Finesse created by Aashrawat. How can I assist you today?"
 
 _GREETING = re.compile(r"^(?:(?:hi|hii+|hello|hey|heya|hiya|yo|ok|okay|so|well|please|pls)\b\s*)+")
 _ASKS_WHO_I_AM = re.compile(
@@ -25,7 +23,9 @@ def _normalize(text: str) -> str:
     text = re.sub(r"\bwhat(?:'s|s)\b", "what is", text)
     text = re.sub(r"\b(?:ur|ure)\b", "your", text)
     text = re.sub(r"[^a-z0-9\s]", " ", text)  # drop punctuation
-    return re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    # "what is you name" / "tell me u name": a missing "r" is a typo, but only after these openers
+    return re.sub(r"\b(what is|tell me|say|whats) (?:you|u|yo) name\b", r"\1 your name", text)
 
 
 def is_identity_question(text: str) -> bool:

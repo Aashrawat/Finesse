@@ -30,15 +30,28 @@ EMBED_MODEL = os.getenv("KB_EMBED_MODEL", "text-embedding-3-small")
 CHAT_MODEL = os.getenv("KB_CHAT_MODEL", "gpt-4o-mini")
 # Cheap model for the helper calls (query rewriting, history summaries, reranking)
 HELPER_MODEL = os.getenv("KB_HELPER_MODEL", "gpt-4o-mini")
+# Vision model: reads images and scanned / figure-heavy PDF pages (must accept image input)
+VISION_MODEL = os.getenv("KB_VISION_MODEL", "gpt-4o")
 OPENAI_MAX_RETRIES = _int("KB_OPENAI_MAX_RETRIES", 4)  # SDK retries with exponential backoff
 OPENAI_TIMEOUT = _float("KB_OPENAI_TIMEOUT", 60.0)
 
 # --- Ingestion ---------------------------------------------------------------
 DOCS_DIR = os.getenv("KB_DOCS_DIR", "knowledge_base")
-SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".md", ".docx"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
+SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".md", ".docx"} | IMAGE_EXTENSIONS
+MAX_VISION_PAGES = _int("KB_MAX_VISION_PAGES", 40)  # per PDF; caps vision cost on huge scanned files
+MAX_IMAGE_SIDE = _int("KB_MAX_IMAGE_SIDE", 2048)  # px; larger images are downscaled before vision
 CHUNK_TOKENS = _int("KB_CHUNK_TOKENS", 700)  # 500-800
 CHUNK_OVERLAP = _int("KB_CHUNK_OVERLAP", 100)
 EMBED_BATCH_SIZE = _int("KB_EMBED_BATCH_SIZE", 64)
+
+# --- Files attached to a chat message (like ChatGPT / Claude) ----------------------------------
+MAX_ATTACH_MB = _int("KB_MAX_ATTACH_MB", 25)  # per file
+MAX_ATTACH_FILES = _int("KB_MAX_ATTACH_FILES", 6)  # per message
+MAX_ATTACH_IMAGES = _int("KB_MAX_ATTACH_IMAGES", 4)  # per message
+ATTACH_FULL_TOKENS = _int("KB_ATTACH_FULL_TOKENS", 30000)  # documents up to this size are sent in full
+ATTACH_TOP_K = _int("KB_ATTACH_TOP_K", 10)  # longer ones: the best N passages for each question
+HISTORY_IMAGES = _int("KB_HISTORY_IMAGES", 3)  # earlier images re-sent with follow-up questions
 
 # --- Vector DB (ChromaDB, local) ----------------------------------------------
 CHROMA_PATH = os.getenv("KB_CHROMA_PATH", os.path.join("data", "kb_chroma"))
@@ -59,6 +72,16 @@ CHAT_RATE_LIMIT = _int("KB_CHAT_RATE_LIMIT", 20)  # requests per minute per sess
 INGEST_RATE_LIMIT = _int("KB_INGEST_RATE_LIMIT", 3)  # per minute per session
 MAX_MESSAGE_CHARS = _int("KB_MAX_MESSAGE_CHARS", 4000)
 REQUEST_LOG = os.getenv("KB_REQUEST_LOG", os.path.join("logs", "chat_requests.jsonl"))
+
+# Used instead of SYSTEM_PROMPT when the conversation has attached files
+ATTACH_SYSTEM_PROMPT = (
+    "You are a helpful, friendly assistant. The user has attached files to this conversation: documents "
+    "(their text is provided below) and images (shown in the messages). Answer from those files, looking "
+    "carefully at images and reading document text closely. When you use a document, cite it as "
+    "[source: filename, page N] (leave out the page if it has none). If the files don't contain the answer, "
+    "say so; you may still help from general knowledge, but make clear which part is not from the files. "
+    "Keep answers clear and concise, and use markdown for formatting."
+)
 
 # The system prompt, exactly as specified
 SYSTEM_PROMPT = (

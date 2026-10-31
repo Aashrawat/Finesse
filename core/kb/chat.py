@@ -1,7 +1,10 @@
-"""The chat turn: memory -> rewrite -> retrieve -> prompt -> stream -> sources -> save -> log.
+"""The chat turn: read attached files -> memory -> rewrite -> retrieve -> prompt -> stream -> sources -> save -> log.
+
+With attached files the answer comes from them (see core.kb.attachments) and the knowledge base is not searched.
 
 `stream_chat` is an async generator of Server-Sent Events:
     meta     {conversation_id, title}
+    status   {text}                   (while attached files are being read)
     token    {t}                      (many)
     sources  {sources: [...]}         (after the last token)
     done     {latency_ms, ttft_ms, usage}
@@ -20,7 +23,8 @@ from typing import Any, AsyncIterator
 
 import openai
 
-from core.kb import config, memory
+from core.kb import attachments, config, memory
+from core.kb.attachments import Attachment, AttachmentError, Upload
 from core.kb.clients import async_client
 from core.kb.identity import IDENTITY_REPLY, is_identity_question
 from core.kb.retrieval import Usage, retrieve, rewrite_query, summarize_history
@@ -95,7 +99,32 @@ def build_messages(
     return messages
 
 
+def build_attached_messages(
+    question: str,
+    doc_context: str,
+    history: list[dict[str, Any]],
+    summary: str,
+    images: list[Attachment],
+) -> list[dict[str, Any]]:
+    """system instruction + attached-document text + (summary) + history + question with this turn's images"""
+    messages: list[dict[str, Any]] = [{"role": "system", "content": config.ATTACH_SYSTEM_PROMPT}]
+    if doc_context:
+        messages.append({"role": "system", "content": doc_context})
+    if summary:
+        messages.append({"role": "system", "content": f"Summary of the earlier conversation: {summary}"})
+    messages.extend(history)
+    if images:
+        parts: list[dict[str, Any]] = [{"type": "text", "text": question}]
+        parts += [attachments.image_part(a.jpeg) for a in images]
+        messages.append({"role": "user", "content": parts})
+    else:
+        messages.append({"role": "user", "content": question})
+    return messages
+
+
 def friendly_error(exc: Exception) -> str:
+    if isinstance(exc, AttachmentError):
+        return str(exc)
     if isinstance(exc, openai.AuthenticationError):
         return "The OpenAI API key was rejected. Check OPENAI_API_KEY in your .env file."
     if isinstance(exc, openai.RateLimitError):
@@ -111,14 +140,20 @@ def friendly_error(exc: Exception) -> str:
     return "Something went wrong while generating the answer."
 
 
-def _save_turn(conv: dict[str, Any], question: str, answer: str, sources: list[dict], stopped: bool) -> None:
+def _save_turn(
+    conv: dict[str, Any], question: str, answer: str, sources: list[dict], stopped: bool,
+    files: list[Attachment] | None = None,
+) -> None:
     """Append the turn to memory (re-reading under the lock so a background summary isn't lost)."""
     with memory.lock_for(conv["id"]):
         current = memory.store.get(conv["session_id"], conv["id"]) or conv
         stamp = memory.now()
-        current["messages"].append(
-            {"id": uuid.uuid4().hex[:12], "role": "user", "content": question, "sources": [], "created_at": stamp}
-        )
+        user_message: dict[str, Any] = {
+            "id": uuid.uuid4().hex[:12], "role": "user", "content": question, "sources": [], "created_at": stamp
+        }
+        if files:
+            user_message["attachments"] = [a.meta() for a in files]
+        current["messages"].append(user_message)
         current["messages"].append(
             {"id": uuid.uuid4().hex[:12], "role": "assistant", "content": answer, "sources": sources,
              "created_at": memory.now(), "stopped": stopped}
@@ -131,11 +166,21 @@ def _save_turn(conv: dict[str, Any], question: str, answer: str, sources: list[d
 
 # ---- the turn ------------------------------------------------------------------------------
 
-async def stream_chat(conv: dict[str, Any], question: str) -> AsyncIterator[str]:
+async def _read_uploads(uploads: list[Upload]) -> AsyncIterator[tuple[str, Attachment | None]]:
+    """Read each file in a worker thread. Yields ("status text", None) before a file, then ("", attachment)."""
+    for upload in uploads:
+        yield f"Reading {upload.name}…", None
+        yield "", await asyncio.to_thread(attachments.read_upload, upload)
+
+
+async def stream_chat(conv: dict[str, Any], question: str, uploads: list[Upload] | None = None) -> AsyncIterator[str]:
+    """`question` is what the user typed (may be empty when they only attached files)."""
     started = time.perf_counter()
     usage = Usage()
     parts: list[str] = []
     sources: list[dict[str, Any]] = []
+    files: list[Attachment] = []  # files attached to this message, once read
+    files_on_disk = False
     standalone = question
     first_token_ms: int | None = None
     status = "error"
@@ -145,7 +190,20 @@ async def stream_chat(conv: dict[str, Any], question: str) -> AsyncIterator[str]
     try:
         yield sse("meta", {"conversation_id": conv["id"], "title": conv["title"]})
 
-        if is_identity_question(question):
+        async for text, item in _read_uploads(uploads or []):
+            if item is None:
+                yield sse("status", {"text": text})
+            else:
+                files.append(item)
+        if files:
+            await asyncio.to_thread(attachments.save, conv["session_id"], conv["id"], files)
+            files_on_disk = True
+
+        images = [a for a in files if a.kind == "image"]
+        # what the model is asked: attached files without a typed question get a sensible default
+        ask = question or "Please summarize the attached file(s) and describe what any images show."
+
+        if is_identity_question(question) and not files:
             # "What is your name?" -> the fixed introduction, streamed word by word like any other answer
             for piece in re.findall(r"\S+\s*", IDENTITY_REPLY):
                 if first_token_ms is None:
@@ -154,12 +212,21 @@ async def stream_chat(conv: dict[str, Any], question: str) -> AsyncIterator[str]
                 yield sse("token", {"t": piece})
                 await asyncio.sleep(0.02)
         else:
-            history = memory.recent_history(conv)
             summary = conv.get("summary", "")
-            standalone = await rewrite_query(question, history, summary, usage)
-            hits = await retrieve(standalone, usage)
-            sources = [source_payload(h) for h in hits]
-            messages = build_messages(question, hits, history, summary)
+            if attachments.has_files(conv, files):
+                # Answer from the attached files; the knowledge base is not involved.
+                history = attachments.history_messages(conv)
+                text_history = [{"role": m["role"], "content": m["content"] if isinstance(m["content"], str)
+                                 else m["content"][0]["text"]} for m in history]
+                standalone = await rewrite_query(ask, text_history, summary, usage)
+                doc_context, sources = await attachments.document_context(conv, files, standalone, usage)
+                messages = build_attached_messages(ask, doc_context, history, summary, images)
+            else:
+                history = memory.recent_history(conv)
+                standalone = await rewrite_query(question, history, summary, usage)
+                hits = await retrieve(standalone, usage)
+                sources = [source_payload(h) for h in hits]
+                messages = build_messages(question, hits, history, summary)
 
             stream = await async_client().chat.completions.create(
                 model=config.CHAT_MODEL,
@@ -180,7 +247,7 @@ async def stream_chat(conv: dict[str, Any], question: str) -> AsyncIterator[str]
 
         answer = "".join(parts)
         yield sse("sources", {"sources": sources})
-        await asyncio.to_thread(_save_turn, conv, question, answer, sources, False)
+        await asyncio.to_thread(_save_turn, conv, question, answer, sources, False, files)
         saved = True
         status = "ok"
         yield sse("done", {
@@ -194,21 +261,28 @@ async def stream_chat(conv: dict[str, Any], question: str) -> AsyncIterator[str]
         raise
     except Exception as exc:
         error_message = f"{type(exc).__name__}: {exc}"
-        _logger.exception("chat request failed")
+        if isinstance(exc, AttachmentError):
+            _logger.info("attachment rejected: %s", exc)  # the user's file, not a server fault
+        else:
+            _logger.exception("chat request failed")
         yield sse("error", {"message": friendly_error(exc)})
     finally:
         answer = "".join(parts)
         if status == "stopped" and answer and not saved:
             try:  # synchronous on purpose: awaiting is not allowed while the generator is being closed
-                _save_turn(conv, question, answer, sources, True)
+                _save_turn(conv, question, answer, sources, True, files)
+                saved = True
             except Exception:
                 _logger.exception("could not save the partial answer")
+        if files_on_disk and not saved:
+            attachments.discard(conv["session_id"], conv["id"], files)  # the turn was never stored
         log_request({
             "ts": memory.now(),
             "session_id": conv["session_id"],
             "conversation_id": conv["id"],
             "status": status,
             "prompt": question,
+            "attachments": [a.name for a in files],
             "standalone_query": standalone,
             "retrieved": [
                 {"source": s["source"], "page": s["page"], "chunk_id": s["chunk_id"], "similarity": s["similarity"]}

@@ -8,7 +8,7 @@ import ConversationSidebar from "@/components/kb/ConversationSidebar";
 import MessageBubble from "@/components/kb/MessageBubble";
 import Composer from "@/components/kb/Composer";
 import { kbApi, streamChat } from "@/lib/kbApi";
-import type { KbMessage } from "@/lib/types";
+import type { KbAttachment, KbMessage } from "@/lib/types";
 
 const uid = () => Math.random().toString(36).slice(2, 12);
 
@@ -95,15 +95,25 @@ export default function KbChat() {
   };
 
   // ---- sending ------------------------------------------------------------------------------
-  async function send(text: string) {
+  async function send(text: string, files: File[]) {
     if (streaming) return;
     const assistantId = uid();
     const patch = (update: (m: KbMessage) => KbMessage) =>
       setMessages((all) => all.map((m) => (m.id === assistantId ? update(m) : m)));
 
+    // Show the files in the message right away (local previews); the server reads them once it receives them
+    const attachments: KbAttachment[] = files.map((f) => ({
+      id: uid(),
+      name: f.name,
+      kind: f.type.startsWith("image/") ? "image" : "document",
+      mime: f.type,
+      size: f.size,
+      previewUrl: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined,
+    }));
+
     setMessages((all) => [
       ...all,
-      { id: uid(), role: "user", content: text, sources: [], created_at: new Date().toISOString() },
+      { id: uid(), role: "user", content: text, sources: [], created_at: new Date().toISOString(), attachments },
       { id: assistantId, role: "assistant", content: "", sources: [], created_at: new Date().toISOString(), streaming: true },
     ]);
     stick.current = true;
@@ -120,13 +130,14 @@ export default function KbChat() {
       if (!pending) return;
       const chunk = pending;
       pending = "";
-      patch((m) => ({ ...m, content: m.content + chunk }));
+      patch((m) => ({ ...m, content: m.content + chunk, status: undefined }));
     };
 
     try {
       await streamChat(
-        { message: text, conversation_id: id },
+        { message: text, conversation_id: id, files },
         {
+          onStatus: (status) => patch((m) => ({ ...m, status })),
           onMeta: (meta) => {
             setTitle((t) => t || meta.title);
             if (!id) {
@@ -243,13 +254,16 @@ export default function KbChat() {
               {empty && !missing && (
                 <div className="m-auto w-full animate-rise text-center" data-testid="kb-empty">
                   <h2 className="text-3xl md:text-4xl">Ask anything?</h2>
+                  <p className="mt-3 text-sm text-ink-muted">
+                    Tap <span className="font-semibold text-ink">+</span> to attach a PDF, take a photo, or pick one from your gallery, then ask about it.
+                  </p>
                 </div>
               )}
 
               {messages.length > 0 && (
                 <div className="space-y-6" role="log" aria-live="polite" aria-label="Conversation" data-testid="kb-messages">
                   {messages.map((m) => (
-                    <MessageBubble key={m.id} message={m} />
+                    <MessageBubble key={m.id} message={m} conversationId={id} />
                   ))}
                 </div>
               )}

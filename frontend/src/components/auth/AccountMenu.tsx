@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { cn } from "@/lib/utils";
 
-const REPO = "https://github.com/Aashrawat/AI-Video-Assistant";
+const REPO = "https://github.com/Aashrawat/Finesse";
 
 const itemClass =
   "flex h-9 w-full items-center gap-3 rounded-md px-2.5 text-left text-sm text-ink-body transition-colors duration-150 hover:bg-panel-hover hover:text-ink focus-visible:bg-panel-hover focus-visible:text-ink";

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, NavLink, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { Clapperboard, FlaskConical, MessagesSquare, PanelLeft, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import HistorySidebar from "@/components/studio/HistorySidebar";
@@ -28,7 +28,7 @@ export default function StudioShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const researchMode = location.pathname.startsWith("/research");
   const chatMode = location.pathname.startsWith("/chat");
-  const videoMode = !researchMode && !chatMode;
+  const videoMode = location.pathname.startsWith("/video") || location.pathname.startsWith("/v/");
   // Chat has its own conversation list; the other two tools get the shared archive sidebar
   const hasSidebar = !chatMode;
   const sidebarMode = researchMode ? "research" : "video";
@@ -58,7 +58,7 @@ export default function StudioShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-40 h-14 border-b border-line bg-[rgba(11,12,16,0.85)] backdrop-blur-[24px]">
         <div className="flex h-full items-center gap-3 px-4 md:px-8">
-          <Link to="/" className="group flex items-center gap-2.5" data-testid="shell-logo-link" aria-label="Finesse home">
+          <Link to="/chat" className="group flex items-center gap-2.5" data-testid="shell-logo-link" aria-label="Finesse home">
             <img
               src="/logo.png"
               alt=""
@@ -94,21 +94,21 @@ export default function StudioShell({ children }: { children: ReactNode }) {
             aria-label="Tool"
             data-testid="mode-switcher"
           >
-            <NavLink
+            <Link
               to="/chat"
               data-testid="mode-chat"
               aria-label="Chat"
-              className={() => modeClass(chatMode)}
+              className={modeClass(chatMode)}
               aria-current={chatMode ? "page" : undefined}
             >
               <MessagesSquare className="size-4" aria-hidden />
               <span className={chatMode ? "inline" : "hidden sm:inline"}>Chat</span>
-            </NavLink>
-            <NavLink
-              to="/"
+            </Link>
+            <Link
+              to="/video"
               data-testid="mode-video"
               aria-label="AI Video Assistant"
-              className={() => modeClass(videoMode)}
+              className={modeClass(videoMode)}
               aria-current={videoMode ? "page" : undefined}
             >
               <Clapperboard className="size-4" aria-hidden />
@@ -116,17 +116,17 @@ export default function StudioShell({ children }: { children: ReactNode }) {
                 <span className="hidden sm:inline">AI Video Assistant</span>
                 <span className="sm:hidden">Video</span>
               </span>
-            </NavLink>
-            <NavLink
+            </Link>
+            <Link
               to="/research"
               data-testid="mode-research"
               aria-label="Research"
-              className={() => modeClass(researchMode)}
+              className={modeClass(researchMode)}
               aria-current={researchMode ? "page" : undefined}
             >
               <FlaskConical className="size-4" aria-hidden />
               <span className={researchMode ? "inline" : "hidden sm:inline"}>Research</span>
-            </NavLink>
+            </Link>
           </div>
 
         </div>

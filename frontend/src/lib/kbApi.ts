@@ -41,6 +41,12 @@ export const kbApi = {
   deleteConversation: (id: string) =>
     request<{ ok: boolean }>(`/api/conversations/${id}`, withSession({ method: "DELETE" })),
   documents: () => request<KbDocuments>("/api/documents"),
+  /** An image attached in a conversation. The session header can't go on an <img src>, so fetch it as a blob. */
+  attachmentBlob: async (conversationId: string, attachmentId: string): Promise<Blob> => {
+    const res = await fetch(`/api/conversations/${conversationId}/attachments/${attachmentId}`, withSession());
+    if (!res.ok) throw new Error("Couldn't load the attachment");
+    return res.blob();
+  },
   ingest: (force = false) =>
     request<IngestResult>(
       "/api/ingest",
@@ -52,6 +58,7 @@ export const kbApi = {
 
 export interface StreamHandlers {
   onMeta?: (meta: { conversation_id: string; title: string }) => void;
+  onStatus?: (text: string) => void;
   onToken?: (token: string) => void;
   onSources?: (sources: KbSource[]) => void;
   onDone?: (done: ChatDone) => void;
@@ -59,18 +66,24 @@ export interface StreamHandlers {
 }
 
 export async function streamChat(
-  body: { message: string; conversation_id?: string },
+  body: { message: string; conversation_id?: string; files?: File[] },
   handlers: StreamHandlers,
   signal: AbortSignal,
 ): Promise<void> {
+  // multipart, so files travel with the question (the browser sets the Content-Type and boundary itself)
+  const form = new FormData();
+  form.append("message", body.message);
+  if (body.conversation_id) form.append("conversation_id", body.conversation_id);
+  body.files?.forEach((f) => form.append("files", f));
+
   let res: Response;
   try {
     res = await fetch(
       "/api/chat",
       withSession({
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify(body),
+        headers: { Accept: "text/event-stream" },
+        body: form,
         signal,
       }),
     );
@@ -106,6 +119,7 @@ export async function streamChat(
     const payload = JSON.parse(data.join("\n"));
     switch (event) {
       case "meta": handlers.onMeta?.(payload); break;
+      case "status": handlers.onStatus?.(payload.text); break;
       case "token": handlers.onToken?.(payload.t); break;
       case "sources": handlers.onSources?.(payload.sources); break;
       case "done": handlers.onDone?.(payload); break;

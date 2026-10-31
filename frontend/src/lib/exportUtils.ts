@@ -82,7 +82,7 @@ export async function exportPdf(video: Video): Promise<string> {
     doc.setFont("courier", "bold");
     doc.setFontSize(9);
     doc.setTextColor(204, 255, 0);
-    doc.text("REEL STUDIO · AI VIDEO BRIEF", margin, 38);
+    doc.text("FINESSE · AI VIDEO BRIEF", margin, 38);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(20);
     doc.setTextColor(255, 255, 255);

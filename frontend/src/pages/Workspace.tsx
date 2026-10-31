@@ -106,7 +106,7 @@ function WorkspaceInner({ id }: { id: string }) {
                 Retry
               </button>
               <Link
-                to="/"
+                to="/video"
                 className="inline-flex h-11 items-center rounded-row bg-lime px-5 font-heading font-bold text-black transition-transform duration-150 active:scale-95"
               >
                 New reel

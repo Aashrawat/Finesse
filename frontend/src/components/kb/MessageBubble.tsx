@@ -1,6 +1,7 @@
 import { memo, useState } from "react";
 import { AlertTriangle, Check, Copy, Square } from "lucide-react";
 import Markdown from "@/components/research/Markdown";
+import MessageAttachments from "@/components/kb/MessageAttachments";
 import Sources from "@/components/kb/Sources";
 import type { KbMessage } from "@/lib/types";
 
@@ -18,15 +19,22 @@ function TypingDots() {
   );
 }
 
-function MessageBubble({ message }: { message: KbMessage }) {
+function MessageBubble({ message, conversationId }: { message: KbMessage; conversationId?: string }) {
   const [copied, setCopied] = useState(false);
 
   if (message.role === "user") {
     return (
-      <div className="flex justify-end" data-testid="kb-message-user">
-        <div className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-panel-hover px-4 py-2.5 text-[15px] leading-relaxed text-ink md:max-w-[75%]">
-          {message.content}
-        </div>
+      <div className="flex flex-col items-end gap-2" data-testid="kb-message-user">
+        {message.attachments && message.attachments.length > 0 && (
+          <div className="max-w-[88%] md:max-w-[75%]">
+            <MessageAttachments attachments={message.attachments} conversationId={conversationId} />
+          </div>
+        )}
+        {message.content && (
+          <div className="max-w-[88%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-panel-hover px-4 py-2.5 text-[15px] leading-relaxed text-ink md:max-w-[75%]">
+            {message.content}
+          </div>
+        )}
       </div>
     );
   }
@@ -50,7 +58,16 @@ function MessageBubble({ message }: { message: KbMessage }) {
       </div>
 
       <div className="min-w-0 flex-1">
-        {waiting && <TypingDots />}
+        {waiting && (
+          <div className="flex items-center gap-2">
+            <TypingDots />
+            {message.status && (
+              <span className="text-sm text-ink-muted" data-testid="kb-status">
+                {message.status}
+              </span>
+            )}
+          </div>
+        )}
 
         {message.content && (
           <div data-testid="kb-answer">

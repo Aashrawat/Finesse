@@ -101,15 +101,27 @@ export interface KbSource {
   text: string;
 }
 
+/** A file attached to a user message. */
+export interface KbAttachment {
+  id: string;
+  name: string;
+  kind: "image" | "document";
+  mime: string;
+  size: number;
+  previewUrl?: string; // client-side only: a local preview for the message that was just sent
+}
+
 export interface KbMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   sources: KbSource[];
   created_at: string;
+  attachments?: KbAttachment[];
   stopped?: boolean; // generation was stopped by the user
   error?: string; // the request failed (shown in place of the answer)
   streaming?: boolean; // client-side only
+  status?: string; // client-side only: e.g. "Reading report.pdf…" before the answer starts
 }
 
 export interface KbConversationItem {

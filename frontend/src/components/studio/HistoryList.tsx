@@ -51,7 +51,7 @@ export default function HistoryList({ activeId, onOpen, autoFocusSearch }: Props
     onSuccess: (_data, id) => {
       toast.success("Reel deleted");
       queryClient.removeQueries({ queryKey: ["video", id] });
-      if (id === activeId) navigate("/");
+      if (id === activeId) navigate("/video");
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["videos"] }),
   });

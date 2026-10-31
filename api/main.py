@@ -23,7 +23,7 @@ ALLOWED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".mp4", ".mov", ".mkv", ".webm", "
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-app = FastAPI(title="AI Meeting Assistant")
+app = FastAPI(title="Finesse")
 
 # CORS: the dev server proxies /api, so this only matters when the frontend is served from another
 # origin. Set CORS_ORIGINS="https://app.example.com,http://localhost:5173" in .env to change it.

@@ -18,7 +18,7 @@ from pathlib import Path
 from core.kb import config, store
 from core.kb.chunking import chunk_pages
 from core.kb.clients import sync_client
-from core.kb.loaders import EmptyDocument, load_document
+from core.kb.loaders import EmptyDocument, TransientLoadError, load_document
 
 _ingest_lock = threading.Lock()  # one ingestion at a time (CLI and API share this within a process)
 
@@ -28,7 +28,8 @@ class IngestBusy(RuntimeError):
 
 
 def _signature() -> str:
-    return f"{config.EMBED_MODEL}|{config.CHUNK_TOKENS}|{config.CHUNK_OVERLAP}|meta2"  # bump when chunk metadata changes
+    # bump the suffix when chunk metadata or loaders change (meta3: PyMuPDF + vision OCR + images)
+    return f"{config.EMBED_MODEL}|{config.CHUNK_TOKENS}|{config.CHUNK_OVERLAP}|{config.VISION_MODEL}|meta3"
 
 
 def file_hash(path: Path) -> str:
@@ -105,6 +106,8 @@ def ingest_folder(folder: str | Path | None = None, force: bool = False, log=pri
                 try:
                     pages = load_document(path)
                     chunks = chunk_pages(pages)
+                except TransientLoadError:
+                    raise  # vision/API trouble: reported below but retried next run
                 except Exception as exc:  # unreadable file: remember it so it isn't retried or listed as pending
                     reason = str(exc) if isinstance(exc, (EmptyDocument, ValueError)) else f"{type(exc).__name__}: {exc}"
                     store.mark_failed(source, digest, reason)
@@ -150,7 +153,7 @@ if __name__ == "__main__":
 
     load_dotenv()
     parser = argparse.ArgumentParser(description="Ingest documents into the knowledge base.")
-    parser.add_argument("folder", nargs="?", default=config.DOCS_DIR, help="folder with PDF/TXT/MD/DOCX files")
+    parser.add_argument("folder", nargs="?", default=config.DOCS_DIR, help="folder with PDF/image/TXT/MD/DOCX files")
     parser.add_argument("--force", action="store_true", help="re-embed even unchanged documents")
     args = parser.parse_args()
     result = ingest_folder(args.folder, force=args.force)
