@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -131,3 +132,19 @@ def chat(video_id: str, body: ChatRequest):
     if not question:
         raise HTTPException(status_code=400, detail="Question is empty")
     return {"answer": get_chain(video_id).invoke(question)}
+
+
+# ---- Frontend (production): serve the built React app from the same origin as /api ----------
+
+DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+if (DIST_DIR / "index.html").is_file():
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def frontend(path: str):
+        if path == "api" or path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not found")
+        candidate = (DIST_DIR / path).resolve()
+        if path and candidate.is_file() and DIST_DIR.resolve() in candidate.parents:
+            return FileResponse(candidate)
+        return FileResponse(DIST_DIR / "index.html")  # client-side routes like /chat/abc

@@ -1,0 +1,16 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.env
+node_modules
+frontend/node_modules
+frontend/dist
+data
+uploads
+logs
+exports
+downloads
+knowledge_base/*
+!knowledge_base/.gitkeep
