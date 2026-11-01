@@ -55,6 +55,25 @@ export const kbApi = {
       "/api/ingest",
       withSession({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ force }) }),
     ),
+  /** Spoken reply (Pro and Premium). Returns an MP3 blob. */
+  speak: async (text: string): Promise<Blob> => {
+    const res = await fetch("/api/chat/speech", withSession({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    }));
+    if (!res.ok) {
+      let message = "Couldn't create the voice reply.";
+      try {
+        const body = await res.json();
+        if (typeof body.detail === "string") message = body.detail;
+      } catch {
+        /* no JSON body */
+      }
+      throw new Error(message);
+    }
+    return res.blob();
+  },
 };
 
 /* ---- streaming chat (Server-Sent Events over fetch, so we can POST and abort) ----------------- */

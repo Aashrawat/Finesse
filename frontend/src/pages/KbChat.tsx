@@ -283,7 +283,7 @@ export default function KbChat() {
               {messages.length > 0 && (
                 <div className="space-y-6" role="log" aria-live="polite" aria-label="Conversation" data-testid="kb-messages">
                   {messages.map((m) => (
-                    <MessageBubble key={m.id} message={m} conversationId={id} />
+                    <MessageBubble key={m.id} message={m} conversationId={id} voiceReplies={!!quota?.voice_replies} />
                   ))}
                 </div>
               )}

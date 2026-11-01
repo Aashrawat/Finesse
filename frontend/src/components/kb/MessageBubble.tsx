@@ -1,9 +1,11 @@
-import { memo, useState } from "react";
-import { AlertTriangle, Check, Copy, Square } from "lucide-react";
+import { memo, useRef, useState } from "react";
+import { AlertTriangle, Check, Copy, Loader2, Square, Volume2 } from "lucide-react";
+import { toast } from "sonner";
 import Markdown from "@/components/research/Markdown";
 import GeneratedImages from "@/components/kb/GeneratedImages";
 import MessageAttachments from "@/components/kb/MessageAttachments";
 import Sources from "@/components/kb/Sources";
+import { kbApi } from "@/lib/kbApi";
 import type { KbMessage } from "@/lib/types";
 
 function TypingDots() {
@@ -20,8 +22,18 @@ function TypingDots() {
   );
 }
 
-function MessageBubble({ message, conversationId }: { message: KbMessage; conversationId?: string }) {
+function MessageBubble({
+  message,
+  conversationId,
+  voiceReplies = false,
+}: {
+  message: KbMessage;
+  conversationId?: string;
+  voiceReplies?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   if (message.role === "user") {
     return (
@@ -47,6 +59,31 @@ function MessageBubble({ message, conversationId }: { message: KbMessage; conver
       setTimeout(() => setCopied(false), 1500);
     } catch {
       /* clipboard unavailable */
+    }
+  }
+
+  async function speak() {
+    if (speaking) return;
+    setSpeaking(true);
+    try {
+      audioRef.current?.pause();
+      const blob = await kbApi.speak(message.content);
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setSpeaking(false);
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        setSpeaking(false);
+        toast.error("Couldn't play the voice reply.");
+      };
+      await audio.play();
+    } catch (err) {
+      setSpeaking(false);
+      toast.error(err instanceof Error ? err.message : "Couldn't create the voice reply.");
     }
   }
 
@@ -107,7 +144,7 @@ function MessageBubble({ message, conversationId }: { message: KbMessage; conver
         {!message.streaming && <Sources sources={message.sources} />}
 
         {!message.streaming && message.content && (
-          <div className="mt-2 flex opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100">
+          <div className="mt-2 flex gap-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100">
             <button
               type="button"
               onClick={copy}
@@ -118,6 +155,19 @@ function MessageBubble({ message, conversationId }: { message: KbMessage; conver
               {copied ? <Check className="size-3.5 text-lime" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
               {copied ? "Copied" : "Copy"}
             </button>
+            {voiceReplies && (
+              <button
+                type="button"
+                onClick={speak}
+                disabled={speaking}
+                aria-label={speaking ? "Reading the answer" : "Listen to the answer"}
+                data-testid="kb-speak-answer"
+                className="inline-flex items-center gap-1.5 rounded px-1.5 py-1 text-xs text-ink-faint transition-colors duration-150 hover:bg-panel-hover hover:text-ink disabled:opacity-60"
+              >
+                {speaking ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Volume2 className="size-3.5" aria-hidden />}
+                {speaking ? "Reading…" : "Listen"}
+              </button>
+            )}
           </div>
         )}
       </div>

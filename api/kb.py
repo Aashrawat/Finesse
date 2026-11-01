@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from core.kb import attachments, config, guest, memory, plans, store
@@ -184,3 +184,33 @@ def delete_conversation(conversation_id: str, x_session_id: str | None = Header(
     if not memory.store.delete(_session(x_session_id), conversation_id):
         raise HTTPException(status_code=404, detail="Conversation not found.")
     return {"ok": True}
+
+
+class SpeechRequest(BaseModel):
+    text: str = ""
+
+
+@router.post("/chat/speech")
+async def speak(body: SpeechRequest, request: Request):
+    """Read an answer aloud. Pro and Premium only; guests and Free get 403."""
+    user = await _account(request)
+    plan = plans.for_user(user)
+    if user is None or not plan.voice_replies:
+        raise HTTPException(status_code=403, detail="Spoken replies are part of Pro and Premium.")
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="Nothing to read aloud.")
+    text = text[: config.SPEECH_MAX_CHARS]
+    try:
+        from core.kb.clients import async_client
+
+        spoken = await async_client().audio.speech.create(
+            model=config.SPEECH_MODEL,
+            voice=config.SPEECH_VOICE,
+            input=text,
+            response_format="mp3",
+        )
+        audio = spoken.content if hasattr(spoken, "content") else await spoken.aread()
+    except Exception:
+        raise HTTPException(status_code=502, detail="Couldn't create the voice reply. Please try again.")
+    return Response(content=audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})

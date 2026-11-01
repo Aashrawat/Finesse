@@ -269,7 +269,7 @@ async def stream_chat(
         if fixed is None and config.IMAGES_ENABLED and not files and imagegen.looks_like_request(
             question, after_image=_last_reply_had_image(conv)
         ):
-            art = await imagegen.plan(question, memory.recent_history(conv), usage)
+            art = await imagegen.plan(question, memory.recent_history(conv, plan), usage)
             if art is not None:
                 standalone = art.prompt
                 if is_guest and not config.GUEST_IMAGES:
@@ -315,7 +315,7 @@ async def stream_chat(
                 # A message that brings new files starts fresh: earlier questions and answers are about other
                 # files, and the model copies their file names and content into the new answer. Follow-up
                 # questions (no new files) keep the history.
-                history = [] if files else attachments.history_messages(conv)
+                history = [] if files else attachments.history_messages(conv, plan=plan)
                 if files:
                     summary = ""
                 text_history = [{"role": m["role"], "content": m["content"] if isinstance(m["content"], str)
@@ -329,7 +329,7 @@ async def stream_chat(
                     attachments.earlier_documents(conv) if new_docs else [],
                 )
             else:
-                history = memory.recent_history(conv)
+                history = memory.recent_history(conv, plan)
                 standalone = await rewrite_query(question, history, summary, usage)
                 hits = await retrieve(standalone, usage)
                 sources = [source_payload(h) for h in hits]

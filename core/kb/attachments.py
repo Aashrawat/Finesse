@@ -201,13 +201,13 @@ def image_part(jpeg: bytes) -> dict[str, Any]:
     return {"type": "image_url", "image_url": {"url": _data_url(jpeg), "detail": "auto"}}
 
 
-def history_messages(conv: dict[str, Any], resend_images: bool = True) -> list[dict[str, Any]]:
+def history_messages(conv: dict[str, Any], resend_images: bool = True, plan=None) -> list[dict[str, Any]]:
     """Recent turns as chat messages. Earlier attachments stay in context: their names are noted, and the
     latest few images are shown again so follow-up questions about them work. Pass resend_images=False when
     the new message brings its own files, so old pictures don't compete with them."""
     from core.kb import memory
 
-    window = memory.recent_messages(conv)
+    window = memory.recent_messages(conv, plan)
     # which images get re-sent: the most recent HISTORY_IMAGES in the window
     image_ids = [a["id"] for m in window for a in m.get("attachments", []) if a.get("kind") == "image"]
     resend = set(image_ids[-config.HISTORY_IMAGES:]) if resend_images and config.HISTORY_IMAGES > 0 else set()

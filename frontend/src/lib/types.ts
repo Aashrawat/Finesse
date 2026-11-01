@@ -187,6 +187,8 @@ export interface ChatQuota {
   messages_limit?: number;
   images_used?: number;
   images_limit?: number;
+  voice_replies?: boolean;
+  research?: boolean;
 }
 
 export interface PlanInfo {

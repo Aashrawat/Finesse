@@ -10,9 +10,11 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from api.auth import current_user
+from core.kb import plans
 from core.research.pipeline import run_research_pipeline
 from core.research.tools import MissingApiKey, require_tavily_key
 
@@ -61,10 +63,17 @@ def _run(research_id: str) -> None:
 
 
 @router.post("")
-def start_research(body: ResearchRequest):
+def start_research(body: ResearchRequest, request: Request):
     topic = body.topic.strip()
     if not topic:
         raise HTTPException(status_code=422, detail="Topic must not be empty.")
+    user = current_user(request)
+    plan = plans.for_user(user)
+    if user is None or not plan.research:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "plan_required", "message": "The advanced research agent is part of Premium."},
+        )
     try:
         require_tavily_key()
     except MissingApiKey as exc:

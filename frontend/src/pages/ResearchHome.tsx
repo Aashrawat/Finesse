@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
 import StudioShell from "@/components/studio/StudioShell";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { api } from "@/lib/api";
 
 const EXAMPLES = [
@@ -15,6 +16,8 @@ const EXAMPLES = [
 export default function ResearchHome() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user, openAuth } = useAuth();
+  const allowed = user?.plan === "premium";
   const [topic, setTopic] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -57,6 +60,35 @@ export default function ResearchHome() {
             </p>
           </section>
 
+          {!allowed ? (
+            <div
+              className="animate-rise rounded-panel border border-line bg-panel p-6 text-center"
+              style={{ animationDelay: "80ms" }}
+              data-testid="research-plan-wall"
+            >
+              <p className="text-base text-ink-body">The advanced research agent is part of Premium.</p>
+              <p className="mt-1 text-sm text-ink-muted">Four agents search, read, write and critique a report for you.</p>
+              <div className="mt-5 flex justify-center gap-2">
+                {!user ? (
+                  <button
+                    type="button"
+                    onClick={() => openAuth("signup")}
+                    className="inline-flex h-11 items-center rounded-row bg-lime px-5 font-heading text-sm font-bold text-on-accent"
+                  >
+                    Sign up
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => navigate("/pricing")}
+                    className="inline-flex h-11 items-center rounded-row bg-lime px-5 font-heading text-sm font-bold text-on-accent"
+                  >
+                    Upgrade to Premium
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
           <form
             onSubmit={submit}
             noValidate
@@ -115,6 +147,7 @@ export default function ResearchHome() {
               ))}
             </div>
           </form>
+          )}
         </div>
 
       </main>

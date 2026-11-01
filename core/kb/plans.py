@@ -33,6 +33,10 @@ class Plan:
     chat_model: str
     daily_messages: int
     daily_images: int  # 0 = image generation is not part of the plan
+    history_turns: int  # last N exchanges kept verbatim in the prompt
+    history_tokens: int  # token budget for those exchanges
+    voice_replies: bool  # spoken answers (OpenAI TTS)
+    research: bool  # the multi-agent research tool
     features: tuple[tuple[str, bool], ...]  # (text, coming soon)
 
     def public(self) -> dict:
@@ -49,6 +53,10 @@ PLANS: dict[str, Plan] = {
         chat_model=os.getenv("KB_PLAN_FREE_MODEL", "gpt-4o-mini"),
         daily_messages=_int("KB_PLAN_FREE_MESSAGES", 30),
         daily_images=_int("KB_PLAN_FREE_IMAGES", 0),
+        history_turns=_int("KB_PLAN_FREE_HISTORY_TURNS", 6),
+        history_tokens=_int("KB_PLAN_FREE_HISTORY_TOKENS", 1500),
+        voice_replies=False,
+        research=False,
         features=(
             ("Standard AI chat", False),
             ("Limited daily messages", False),
@@ -62,15 +70,19 @@ PLANS: dict[str, Plan] = {
         chat_model=os.getenv("KB_PLAN_PRO_MODEL", "gpt-5.5"),
         daily_messages=_int("KB_PLAN_PRO_MESSAGES", 300),
         daily_images=_int("KB_PLAN_PRO_IMAGES", 30),
+        history_turns=_int("KB_PLAN_PRO_HISTORY_TURNS", 20),
+        history_tokens=_int("KB_PLAN_PRO_HISTORY_TOKENS", 8000),
+        voice_replies=True,
+        research=False,
         features=(
             ("Higher AI message limits", False),
             ("Advanced AI models", False),
             ("Image generation", False),
             ("Voice input", False),
-            ("Voice responses", True),
+            ("Voice responses", False),
             ("PDF analysis", False),
             ("Web research", False),
-            ("Longer conversation context", True),
+            ("Longer conversation context", False),
             ("Faster processing", False),
         ),
     ),
@@ -79,16 +91,18 @@ PLANS: dict[str, Plan] = {
         chat_model=os.getenv("KB_PLAN_PREMIUM_MODEL", "gpt-6.1-sol"),
         daily_messages=_int("KB_PLAN_PREMIUM_MESSAGES", 1000),
         daily_images=_int("KB_PLAN_PREMIUM_IMAGES", 100),
+        history_turns=_int("KB_PLAN_PREMIUM_HISTORY_TURNS", 40),
+        history_tokens=_int("KB_PLAN_PREMIUM_HISTORY_TOKENS", 16000),
+        voice_replies=True,
+        research=True,
         features=(
             ("Everything in Pro", False),
             ("Newest, most powerful AI model", False),
-            ("Advanced research agent", True),
+            ("Advanced research agent", False),
             ("Higher image-generation limits", False),
-            ("AI video tools", True),
-            ("Advanced voice conversations", True),
             ("Large document analysis", False),
             ("Priority processing", False),
-            ("More memory and context", True),
+            ("More memory and context", False),
         ),
     ),
 }
@@ -112,6 +126,7 @@ def status(user_id: str, plan: Plan) -> dict:
         "plan": plan.id, "plan_name": plan.name, "model": plan.chat_model,
         "messages_used": messages, "messages_limit": plan.daily_messages,
         "images_used": images, "images_limit": plan.daily_images,
+        "voice_replies": plan.voice_replies, "research": plan.research,
         "blocked": messages >= plan.daily_messages,
     }
 

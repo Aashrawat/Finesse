@@ -249,7 +249,7 @@ export default function Pricing() {
               Pick the plan that <span className="text-lime">fits you</span>
             </h1>
             <p className="mx-auto mt-4 max-w-xl text-base text-ink-muted">
-              Pro and Premium answer with more powerful, newer OpenAI models, and come with higher limits and image generation.
+              Pro adds spoken replies and longer conversations. Premium adds the research agent and even more memory.
             </p>
             {subscribed && (
               <button

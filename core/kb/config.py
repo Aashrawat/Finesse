@@ -62,6 +62,11 @@ IMAGE_TIMEOUT = _float("KB_IMAGE_TIMEOUT", 240.0)  # seconds; high quality image
 IMAGE_RATE_LIMIT = _int("KB_IMAGE_RATE_LIMIT", 10)  # images per hour per session (they cost real money)
 GUEST_IMAGES = _bool("KB_GUEST_IMAGES", False)  # may visitors who aren't logged in generate images?
 
+# --- Spoken replies (Pro and Premium) ------------------------------------------------------------
+SPEECH_MODEL = os.getenv("KB_SPEECH_MODEL", "gpt-4o-mini-tts")
+SPEECH_VOICE = os.getenv("KB_SPEECH_VOICE", "alloy")
+SPEECH_MAX_CHARS = _int("KB_SPEECH_MAX_CHARS", 4000)  # OpenAI TTS is billed by characters
+
 # --- Guests (visitors who are not logged in) ---------------------------------------------------
 GUEST_MAX_FILES = _int("KB_GUEST_MAX_FILES", 2)  # files they may attach in total
 GUEST_MAX_TOKENS = _int("KB_GUEST_MAX_TOKENS", 1000)  # tokens of chat text (their messages + the answers) in total

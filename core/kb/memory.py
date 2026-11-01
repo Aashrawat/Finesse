@@ -21,7 +21,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
-from core.kb import config
+from core.kb import config, plans
 from core.kb.chunking import count_tokens
 
 _SESSION_RE = re.compile(r"^[0-9a-f-]{32,36}$")
@@ -135,15 +135,17 @@ def _tokens(message: dict[str, Any]) -> int:
     return count_tokens(message["content"]) + 4
 
 
-def window_start(messages: list[dict[str, Any]]) -> int:
+def window_start(messages: list[dict[str, Any]], plan: plans.Plan | None = None) -> int:
     """Index of the first message kept verbatim: at most the last N turns (2 messages each)
-    and within the history token budget. Everything before it is "older" history."""
+    and within the history token budget. Everything before it is "older" history.
+    Paid plans keep more of the conversation (Pro: longer context, Premium: more memory)."""
+    chosen = plan or plans.get("free")
     keep = 0
     used = 0
-    limit = config.HISTORY_TURNS * 2
+    limit = chosen.history_turns * 2
     for message in reversed(messages):
         cost = _tokens(message)
-        if keep >= limit or used + cost > config.HISTORY_TOKEN_BUDGET:
+        if keep >= limit or used + cost > chosen.history_tokens:
             break
         keep += 1
         used += cost
@@ -154,19 +156,19 @@ def window_start(messages: list[dict[str, Any]]) -> int:
     return start
 
 
-def recent_messages(conversation: dict[str, Any]) -> list[dict[str, Any]]:
+def recent_messages(conversation: dict[str, Any], plan: plans.Plan | None = None) -> list[dict[str, Any]]:
     """The stored messages inside the prompt window (with their attachments)."""
     messages = conversation["messages"]
-    start = max(window_start(messages), conversation.get("summarized_upto", 0))
+    start = max(window_start(messages, plan), conversation.get("summarized_upto", 0))
     return messages[start:]
 
 
-def recent_history(conversation: dict[str, Any]) -> list[dict[str, str]]:
+def recent_history(conversation: dict[str, Any], plan: plans.Plan | None = None) -> list[dict[str, str]]:
     """The messages to put in the prompt, as {role, content}."""
-    return [{"role": m["role"], "content": m["content"]} for m in recent_messages(conversation)]
+    return [{"role": m["role"], "content": m["content"]} for m in recent_messages(conversation, plan)]
 
 
-def compress(session_id: str, conversation_id: str, summarize) -> None:
+def compress(session_id: str, conversation_id: str, summarize, plan: plans.Plan | None = None) -> None:
     """Fold messages that fell out of the window into the running summary.
 
     `summarize(previous_summary, messages) -> str` is injected (an LLM call). Runs in a
@@ -178,7 +180,7 @@ def compress(session_id: str, conversation_id: str, summarize) -> None:
             return
         messages = conversation["messages"]
         done = conversation.get("summarized_upto", 0)
-        target = window_start(messages)
+        target = window_start(messages, plan)
         if target <= done:
             return
         try:
