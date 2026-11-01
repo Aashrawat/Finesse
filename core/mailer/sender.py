@@ -1,5 +1,8 @@
-﻿"""Sending email. Two providers; the first one that is configured in .env is used:
+﻿"""Sending email. Three providers; the first one that is configured in .env is used:
 
+0. Brevo (BREVO_API_KEY, EMAIL_FROM=`Finesse AI <you@gmail.com>` where that address is a verified sender in Brevo).
+   Sends over HTTPS (port 443), so it works on hosts that block SMTP ports (Hugging Face Spaces) and reaches any
+   recipient without a domain of your own. The free plan allows about 300 emails a day.
 1. SMTP (SMTP_HOST, SMTP_USER, SMTP_PASSWORD, optional SMTP_PORT=587 and EMAIL_FROM). Works for any recipient and
    needs no domain of your own. For example Gmail: SMTP_HOST=smtp.gmail.com, SMTP_USER=you@gmail.com and
    SMTP_PASSWORD=<an App Password> (Google account -> Security -> 2-Step Verification -> App passwords).
@@ -15,8 +18,11 @@ tried locally. Every email, sent or not, is recorded in the `email_log` collecti
 import asyncio
 import logging
 import os
+import json
 import smtplib
 import ssl
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from email.utils import formataddr, parseaddr
@@ -37,7 +43,9 @@ def _env(name: str) -> str:
 
 
 def provider() -> str:
-    """"smtp", "resend" or "console" (nothing configured: emails are printed, not sent)."""
+    """"brevo", "smtp", "resend" or "console" (nothing configured: emails are printed, not sent)."""
+    if _env("BREVO_API_KEY"):
+        return "brevo"
     if _env("SMTP_HOST") and _env("SMTP_USER") and _env("SMTP_PASSWORD"):
         return "smtp"
     if _env("RESEND_API_KEY"):
@@ -105,6 +113,34 @@ def _send_resend(to: str, subject: str, html: str, text: str, idempotency_key: s
     return str((result or {}).get("id", "")) or None
 
 
+def _send_brevo(to: str, subject: str, html: str, text: str) -> str | None:
+    """Brevo's transactional email API (https://developers.brevo.com). The sender must be verified in Brevo."""
+    name, address = parseaddr(_env("EMAIL_FROM"))
+    if not address or "resend.dev" in address:
+        raise RuntimeError("Set EMAIL_FROM to a sender address verified in Brevo, e.g. Finesse AI <you@gmail.com>.")
+    payload: dict = {
+        "sender": {"name": name or "Finesse AI", "email": address},
+        "to": [{"email": to}],
+        "subject": subject,
+        "htmlContent": html,
+        "textContent": text,
+    }
+    if _env("EMAIL_REPLY_TO"):
+        payload["replyTo"] = {"email": parseaddr(_env("EMAIL_REPLY_TO"))[1]}
+    request = urllib.request.Request(
+        "https://api.brevo.com/v3/smtp/email",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"api-key": _env("BREVO_API_KEY"), "content-type": "application/json", "accept": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            body = json.loads(response.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"Brevo answered {exc.code}: {exc.read().decode('utf-8', 'replace')[:300]}") from exc
+    return str(body.get("messageId", "")) or None
+
+
 def _explain(provider_name: str, exc: Exception) -> str:
     """What went wrong, for the server log (the user only sees a short generic message)."""
     detail = str(exc)
@@ -127,13 +163,15 @@ def send(
     """Send one email (blocking: call it from a worker thread). Raises EmailError when delivery fails."""
     name = provider()
     if name == "console":
-        _logger.warning("No email provider is set up (SMTP_* or RESEND_API_KEY), so this email was NOT sent. It would have said:\n"
+        _logger.warning("No email provider is set up (BREVO_API_KEY, SMTP_* or RESEND_API_KEY), so this email was NOT sent. It would have said:\n"
                         "  To: %s\n  Subject: %s\n  %s", to, subject, text.replace("\n", "\n  "))
         _record(kind, to, "console", user_id)
         return
     provider_id = None
     try:
-        if name == "smtp":
+        if name == "brevo":
+            provider_id = _send_brevo(to, subject, html, text)
+        elif name == "smtp":
             _send_smtp(to, subject, html, text)
         else:
             provider_id = _send_resend(to, subject, html, text, idempotency_key)
