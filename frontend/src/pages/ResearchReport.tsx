@@ -50,7 +50,7 @@ export default function ResearchReport() {
               <button
                 type="button"
                 onClick={() => navigate("/research")}
-                className="mt-5 h-11 rounded-row bg-lime px-6 font-heading font-bold text-black"
+                className="mt-5 h-11 rounded-row bg-lime px-6 font-heading font-bold text-on-accent"
               >
                 Start a new one
               </button>
@@ -64,7 +64,7 @@ export default function ResearchReport() {
               <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-danger">Research failed</p>
               <h1 className="mt-2 text-2xl">{job.topic}</h1>
               <p className="mt-3 break-words text-sm text-ink-body">{job.error}</p>
-              <Link to="/research" className="mt-5 inline-flex h-11 items-center rounded-row bg-lime px-6 font-heading font-bold text-black">
+              <Link to="/research" className="mt-5 inline-flex h-11 items-center rounded-row bg-lime px-6 font-heading font-bold text-on-accent">
                 Try again
               </Link>
             </div>
@@ -112,7 +112,7 @@ function Report({ job }: { job: ResearchJob }) {
             type="button"
             onClick={() => downloadText(`${slugify(job.topic)}.md`, markdown)}
             data-testid="research-download-button"
-            className="inline-flex h-10 items-center gap-2 rounded-row bg-lime px-4 text-sm font-bold text-black transition-shadow duration-150 hover:shadow-[0_0_24px_rgba(204,255,0,0.3)]"
+            className="inline-flex h-10 items-center gap-2 rounded-row bg-lime px-4 text-sm font-bold text-on-accent transition-shadow duration-150 hover:shadow-[0_0_24px_color-mix(in_srgb,var(--color-lime)_30%,transparent)]"
           >
             <Download className="size-4" aria-hidden /> Download .md
           </button>

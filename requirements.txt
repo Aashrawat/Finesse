@@ -55,3 +55,7 @@ python-docx>=1.1.0        # DOCX loader
 pymongo>=4.7             # MongoDB driver; set MONGODB_URI in .env
 dnspython>=2.4            # needed for mongodb+srv:// (Atlas) connection strings
 bcrypt>=4.1              # password hashing
+
+# ---- Email (Resend) and payments (Stripe) ----
+resend>=2.0           # sends the sign-up codes and billing emails; set RESEND_API_KEY and EMAIL_FROM in .env
+stripe>=12.0           # subscriptions: Checkout, Customer Portal and webhooks

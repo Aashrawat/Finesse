@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, type KeyboardEvent, type MouseEvent } from "react";
+﻿import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, type KeyboardEvent, type MouseEvent } from "react";
 import { Pause, Play, RotateCcw, RotateCw } from "lucide-react";
 import { formatClock, ledTimecode } from "@/lib/format";
 import type { PlayerHandle, Video } from "@/lib/types";
@@ -186,7 +186,7 @@ const MediaDeck = forwardRef<PlayerHandle, Props>(function MediaDeck(
       onClick={togglePlay}
       aria-label={playing ? "Pause" : "Play"}
       data-testid="media-big-play-button"
-      className="glow-lime grid size-16 place-items-center rounded-full bg-lime text-black transition-transform duration-150 hover:scale-105 active:scale-95"
+      className="glow-lime grid size-16 place-items-center rounded-full bg-lime text-on-accent transition-transform duration-150 hover:scale-105 active:scale-95"
     >
       {playing ? <Pause className="size-7" aria-hidden /> : <Play className="size-7 translate-x-0.5" aria-hidden />}
     </button>
@@ -259,7 +259,7 @@ const MediaDeck = forwardRef<PlayerHandle, Props>(function MediaDeck(
           <div className="flex items-baseline gap-2">
             <span
               className={cn(
-                "rounded-full bg-black px-3 py-1 font-mono text-sm text-lime",
+                "rounded-full bg-track px-3 py-1 font-mono text-sm text-lime",
                 playing && "animate-led-pulse",
               )}
               data-testid="media-timecode"
@@ -286,7 +286,7 @@ const MediaDeck = forwardRef<PlayerHandle, Props>(function MediaDeck(
               disabled={!hasMedia}
               aria-label={playing ? "Pause" : "Play"}
               data-testid="media-play-button"
-              className="grid size-11 place-items-center rounded-row bg-ink text-black transition-transform duration-150 hover:scale-105 active:scale-95 disabled:opacity-40"
+              className="grid size-11 place-items-center rounded-row bg-ink text-page transition-transform duration-150 hover:scale-105 active:scale-95 disabled:opacity-40"
             >
               {playing ? <Pause className="size-5" aria-hidden /> : <Play className="size-5 translate-x-px" aria-hidden />}
             </button>
@@ -312,7 +312,7 @@ const MediaDeck = forwardRef<PlayerHandle, Props>(function MediaDeck(
                 data-testid={`media-speed-${r}`}
                 className={cn(
                   "h-8 rounded-md px-2 font-mono text-xs transition-colors duration-150",
-                  rate === r ? "bg-lime font-bold text-black" : "text-ink-muted hover:text-ink",
+                  rate === r ? "bg-lime font-bold text-on-accent" : "text-ink-muted hover:text-ink",
                 )}
               >
                 {r}x
@@ -336,7 +336,7 @@ const MediaDeck = forwardRef<PlayerHandle, Props>(function MediaDeck(
           className="relative h-8 cursor-pointer overflow-hidden rounded-row bg-track"
         >
           {ticks.map((left, i) => (
-            <span key={i} className="absolute inset-y-2 w-px bg-white/10" style={{ left: `${left}%` }} aria-hidden />
+            <span key={i} className="absolute inset-y-2 w-px bg-ink/10" style={{ left: `${left}%` }} aria-hidden />
           ))}
           <div className="absolute inset-y-0 left-0 bg-lime/15" style={{ width: `${progress}%` }} aria-hidden />
           <div

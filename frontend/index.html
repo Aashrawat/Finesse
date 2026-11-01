@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0B0C10" />
     <link rel="icon" type="image/png" href="/logo.png" />
+    <script>
+      // Paint the saved day/night mode and accent colour before the page shows (no flash). Keep in step with src/lib/theme.ts.
+      try {
+        var t = JSON.parse(localStorage.getItem("finesse.theme.v1") || "null");
+        var d = document.documentElement;
+        var m = t && t.mode === "system" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : t && t.mode === "light" ? "light" : "dark";
+        d.setAttribute("data-theme", m);
+        if (t && t[m]) {
+          d.style.setProperty("--color-lime", t[m].accent);
+          d.style.setProperty("--color-on-accent", t[m].on);
+        }
+        if (m === "light") document.querySelector('meta[name="theme-color"]').setAttribute("content", "#FFFFFF");
+      } catch (e) {}
+    </script>
     <title>Finesse · AI video assistant</title>
   </head>
   <body>

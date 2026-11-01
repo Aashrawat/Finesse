@@ -114,7 +114,7 @@ export default function Intake() {
   const segmentClass = (active: boolean) =>
     cn(
       "h-10 flex-1 rounded-md px-4 text-sm font-semibold transition-colors duration-150",
-      active ? "bg-lime text-black" : "text-ink-muted hover:bg-panel-hover hover:text-ink",
+      active ? "bg-lime text-on-accent" : "text-ink-muted hover:bg-panel-hover hover:text-ink",
     );
 
   return (
@@ -301,7 +301,7 @@ function SubmitButton({ submitting, full }: { submitting: boolean; full?: boolea
       disabled={submitting}
       data-testid="intake-submit-button"
       className={cn(
-        "inline-flex h-14 items-center justify-center gap-2 rounded-row bg-lime px-8 font-heading text-base font-bold text-black transition-[transform,box-shadow] duration-150 hover:shadow-[0_0_30px_rgba(204,255,0,0.35)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60",
+        "inline-flex h-14 items-center justify-center gap-2 rounded-row bg-lime px-8 font-heading text-base font-bold text-on-accent transition-[transform,box-shadow] duration-150 hover:shadow-[0_0_30px_color-mix(in_srgb,var(--color-lime)_35%,transparent)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60",
         full && "w-full",
       )}
     >

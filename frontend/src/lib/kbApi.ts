@@ -1,10 +1,12 @@
 import { request } from "@/lib/api";
 import type {
   ChatDone,
+  ChatQuota,
   IngestResult,
   KbConversation,
   KbConversationItem,
   KbDocuments,
+  KbGeneratedImage,
   KbSource,
 } from "@/lib/types";
 
@@ -41,6 +43,7 @@ export const kbApi = {
   deleteConversation: (id: string) =>
     request<{ ok: boolean }>(`/api/conversations/${id}`, withSession({ method: "DELETE" })),
   documents: () => request<KbDocuments>("/api/documents"),
+  quota: () => request<ChatQuota>("/api/chat/quota", withSession()),
   /** An image attached in a conversation. The session header can't go on an <img src>, so fetch it as a blob. */
   attachmentBlob: async (conversationId: string, attachmentId: string): Promise<Blob> => {
     const res = await fetch(`/api/conversations/${conversationId}/attachments/${attachmentId}`, withSession());
@@ -59,6 +62,7 @@ export const kbApi = {
 export interface StreamHandlers {
   onMeta?: (meta: { conversation_id: string; title: string }) => void;
   onStatus?: (text: string) => void;
+  onImage?: (image: KbGeneratedImage) => void;
   onToken?: (token: string) => void;
   onSources?: (sources: KbSource[]) => void;
   onDone?: (done: ChatDone) => void;
@@ -97,6 +101,7 @@ export async function streamChat(
     try {
       const data = await res.json();
       if (typeof data.detail === "string") message = data.detail;
+      else if (typeof data.detail?.message === "string") message = data.detail.message; // e.g. the guest limit
       else if (Array.isArray(data.detail) && data.detail[0]?.msg) message = String(data.detail[0].msg);
     } catch {
       /* no JSON body */
@@ -120,6 +125,7 @@ export async function streamChat(
     switch (event) {
       case "meta": handlers.onMeta?.(payload); break;
       case "status": handlers.onStatus?.(payload.text); break;
+      case "image": handlers.onImage?.(payload); break;
       case "token": handlers.onToken?.(payload.t); break;
       case "sources": handlers.onSources?.(payload.sources); break;
       case "done": handlers.onDone?.(payload); break;

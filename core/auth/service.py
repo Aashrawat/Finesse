@@ -18,6 +18,7 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from pymongo.errors import DuplicateKeyError
 
+from core.auth import otp
 from core.auth.db import get_db
 
 SESSION_DAYS = int(os.getenv("AUTH_SESSION_DAYS", "30") or 30)
@@ -122,12 +123,25 @@ def _burn_time(password: str) -> None:
 
 # ---- users ------------------------------------------------------------------------------
 
+def _iso(value) -> str | None:
+    if not isinstance(value, datetime):
+        return None
+    return (value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value).isoformat(timespec="seconds")
+
+
 def public_user(doc: dict) -> dict:
+    sub = doc.get("subscription") or {}
     return {
         "id": str(doc["_id"]),
         "name": doc["name"],
         "email": doc["email"],
         "plan": doc.get("plan", "free"),
+        "email_verified": doc.get("email_verified", True),  # accounts made before verification existed count as verified
+        "subscription": {
+            "status": sub.get("status", "inactive"),
+            "cancel_at_period_end": bool(sub.get("cancel_at_period_end", False)),
+            "current_period_end": _iso(sub.get("current_period_end")),
+        },
         "created_at": doc["created_at"].replace(tzinfo=timezone.utc).isoformat(timespec="seconds")
         if doc["created_at"].tzinfo is None
         else doc["created_at"].isoformat(timespec="seconds"),
@@ -140,13 +154,106 @@ def create_user(name: str, email: str, password: str) -> dict:
         "email": clean_email(email),
         "password_hash": hash_password(check_password(password)),
         "plan": "free",
+        "email_verified": False,  # becomes true when the 6-digit code from the sign-up email is entered
+        "subscription": {"plan": "free", "status": "inactive"},
         "created_at": _now(),
     }
+    users = get_db().users
     try:
-        doc["_id"] = get_db().users.insert_one(doc).inserted_id
+        doc["_id"] = users.insert_one(doc).inserted_id
     except DuplicateKeyError:
+        existing = users.find_one({"email": doc["email"]})
+        if existing is not None and not existing.get("email_verified", True):
+            # Signed up before but never confirmed the email: let them start over (new name and password),
+            # so an abandoned sign-up can't lock the address.
+            fields = {"name": doc["name"], "password_hash": doc["password_hash"]}
+            return users.find_one_and_update({"_id": existing["_id"]}, {"$set": fields}, return_document=True)
         raise AuthError(409, "An account with that email already exists. Try logging in.")
     return doc
+
+
+# ---- email codes (verify the address, reset the password) ------------------------------------
+
+def _send_code(user: dict, purpose: str, *, quiet_cooldown: bool = False) -> None:
+    """Make a code and email it. `quiet_cooldown`: if one was sent a moment ago, just carry on (it's still valid)."""
+    from core.mailer import sender, templates
+
+    try:
+        code = otp.issue(user["_id"], purpose)
+    except otp.OtpError as exc:
+        if quiet_cooldown and exc.status == 429:
+            return
+        raise AuthError(exc.status, exc.message)
+    make = templates.verify_code if purpose == "verify" else templates.reset_code
+    subject, html, text = make(user["name"], code, otp.OTP_MINUTES)
+    try:
+        sender.send(user["email"], subject, html, text, kind=f"otp_{purpose}", user_id=str(user["_id"]))
+    except sender.EmailError as exc:
+        get_db().verifications.delete_one({"user_id": user["_id"], "purpose": purpose})  # no email, no pending code
+        raise AuthError(503, str(exc))
+
+
+def send_verification(user: dict, *, quiet_cooldown: bool = False) -> None:
+    _send_code(user, "verify", quiet_cooldown=quiet_cooldown)
+
+
+def verify_email(email: str, code: str) -> dict:
+    """Check the sign-up code. On success the account is activated and its document returned."""
+    wrong = AuthError(400, "That code isn't right or has expired. Request a new one.")
+    try:
+        address = clean_email(email)
+    except AuthError:
+        raise wrong
+    users = get_db().users
+    user = users.find_one({"email": address})
+    if user is None or user.get("email_verified", True):
+        raise wrong
+    try:
+        otp.check(user["_id"], "verify", code)
+    except otp.OtpError as exc:
+        raise AuthError(exc.status, exc.message)
+    user = users.find_one_and_update({"_id": user["_id"]}, {"$set": {"email_verified": True}}, return_document=True)
+    from core.mailer import sender, templates
+
+    try:
+        subject, html, text = templates.welcome(user["name"])
+        sender.send(user["email"], subject, html, text, kind="welcome", user_id=str(user["_id"]))
+    except Exception:  # the welcome email is a nicety: never fail the verification over it
+        pass
+    return user
+
+
+def resend_code(email: str, purpose: str) -> None:
+    """Send a fresh code. Says nothing about whether the address has an account (no way to look emails up)."""
+    try:
+        address = clean_email(email)
+    except AuthError:
+        return
+    user = get_db().users.find_one({"email": address})
+    if user is None:
+        return
+    verified = user.get("email_verified", True)
+    if (purpose == "verify" and not verified) or (purpose == "reset" and verified):
+        _send_code(user, purpose, quiet_cooldown=True)
+
+
+def reset_password(email: str, code: str, new_password: str) -> None:
+    wrong = AuthError(400, "That code isn't right or has expired. Request a new one.")
+    try:
+        address = clean_email(email)
+    except AuthError:
+        raise wrong
+    password = check_password(new_password)
+    users = get_db().users
+    user = users.find_one({"email": address})
+    if user is None or not user.get("email_verified", True):
+        raise wrong
+    try:
+        otp.check(user["_id"], "reset", code)
+    except otp.OtpError as exc:
+        raise AuthError(exc.status, exc.message)
+    users.update_one({"_id": user["_id"]}, {"$set": {"password_hash": hash_password(password)}})
+    get_db().sessions.delete_many({"user_id": user["_id"]})  # log out everywhere: whoever had the old password is out
 
 
 def authenticate(email: str, password: str) -> dict:
@@ -171,6 +278,17 @@ def update_name(user_id: str, name: str) -> dict:
     except (InvalidId, TypeError):
         raise AuthError(401, "Please log in again.")
     user = get_db().users.find_one_and_update({"_id": oid}, {"$set": {"name": cleaned}}, return_document=True)
+    if user is None:
+        raise AuthError(401, "Please log in again.")
+    return user
+
+
+def set_plan(user_id: str, plan: str) -> dict:
+    try:
+        oid = ObjectId(user_id)
+    except (InvalidId, TypeError):
+        raise AuthError(401, "Please log in again.")
+    user = get_db().users.find_one_and_update({"_id": oid}, {"$set": {"plan": plan}}, return_document=True)
     if user is None:
         raise AuthError(401, "Please log in again.")
     return user
@@ -207,7 +325,10 @@ def user_for_token(token: str | None) -> dict | None:
     if expires <= _now():  # MongoDB's cleanup runs about once a minute, so check here too
         db.sessions.delete_one({"_id": session["_id"]})
         return None
-    return db.users.find_one({"_id": session["user_id"]})
+    user = db.users.find_one({"_id": session["user_id"]})
+    if user is not None and not user.get("email_verified", True):
+        return None  # never a normal session for an address that wasn't confirmed
+    return user
 
 
 def end_session(token: str | None) -> None:

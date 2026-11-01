@@ -189,7 +189,7 @@ export default function TranscriptPanel({ segments, currentTime, onSeek, focusRe
                 data-testid={`transcript-segment-${index}`}
                 className={cn(
                   "relative grid grid-cols-[64px_1fr] gap-3 px-4 py-2.5 transition-colors duration-150",
-                  active ? "bg-[#24293D]" : "hover:bg-panel-hover/60",
+                  active ? "bg-selected" : "hover:bg-panel-hover/60",
                   flash === index && "animate-lime-flash",
                 )}
               >
@@ -201,7 +201,7 @@ export default function TranscriptPanel({ segments, currentTime, onSeek, focusRe
                   aria-label={`Jump to ${formatClock(segment.start)}`}
                   className={cn(
                     "h-6 self-start rounded px-1.5 text-left font-mono text-xs transition-colors duration-150",
-                    active ? "bg-lime font-bold text-black" : "text-cyan hover:bg-cyan/10",
+                    active ? "bg-lime font-bold text-on-accent" : "text-cyan hover:bg-cyan/10",
                   )}
                 >
                   {formatClock(segment.start)}

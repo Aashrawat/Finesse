@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Check, Circle, Eye, EyeOff, Loader2 } from "lucide-react";
 import Modal from "@/components/auth/Modal";
+import { ForgotStep, ResetStep, VerifyStep, inputClass } from "@/components/auth/EmailCodeSteps";
 import { authApi } from "@/lib/authApi";
 import { passwordError, passwordRules } from "@/lib/password";
 import { cn } from "@/lib/utils";
@@ -17,8 +18,8 @@ interface Props {
 }
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
-const inputClass =
-  "no-focus-ring h-11 w-full rounded-row border border-line bg-track px-3.5 text-[15px] text-ink placeholder:text-ink-faint transition-colors duration-150 focus:border-lime/60 focus:outline-none aria-[invalid=true]:border-danger/70";
+
+type Step = "form" | "verify" | "forgot" | "reset";
 
 export default function AuthDialog({ mode, onModeChange, onClose, onSuccess }: Props) {
   const signup = mode === "signup";
@@ -27,11 +28,25 @@ export default function AuthDialog({ mode, onModeChange, onClose, onSuccess }: P
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [field, setField] = useState<"name" | "email" | "password" | null>(null);
+  // After the form: enter the emailed code (verify), or the forgot-password steps
+  const [step, setStep] = useState<Step>("form");
+  const [codeEmail, setCodeEmail] = useState("");
 
   const submit = useMutation({
     mutationFn: () => (signup ? authApi.signup({ name, email, password }) : authApi.login({ email, password })),
-    onSuccess: ({ user }) => onSuccess(user, mode),
+    onSuccess: (result) => {
+      if ("verification_required" in result) {
+        // the account isn't active until the emailed code is entered: no login yet
+        setCodeEmail(result.email);
+        setPassword("");
+        setNotice("");
+        setStep("verify");
+      } else {
+        onSuccess(result.user, mode);
+      }
+    },
     onError: (err) => {
       setField(null);
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
@@ -57,13 +72,53 @@ export default function AuthDialog({ mode, onModeChange, onClose, onSuccess }: P
 
   function switchMode() {
     setError("");
+    setNotice("");
     setField(null);
     setPassword("");
     onModeChange(signup ? "login" : "signup");
   }
 
+  function backToForm() {
+    setError("");
+    setPassword("");
+    setStep("form");
+  }
+
+  if (step !== "form") {
+    const title = step === "verify" ? "Verify your email" : "Reset your password";
+    return (
+      <Modal key={step} title={title} onClose={onClose} testId="auth-dialog">
+        {step === "verify" && (
+          <VerifyStep email={codeEmail} onVerified={(user) => onSuccess(user, "signup")} onBack={backToForm} />
+        )}
+        {step === "forgot" && (
+          <ForgotStep
+            initialEmail={email}
+            onSent={(sentTo) => {
+              setCodeEmail(sentTo);
+              setStep("reset");
+            }}
+            onBack={backToForm}
+          />
+        )}
+        {step === "reset" && (
+          <ResetStep
+            email={codeEmail}
+            onBack={backToForm}
+            onDone={() => {
+              setEmail(codeEmail);
+              setNotice("Your password was changed. Log in with your new password.");
+              onModeChange("login");
+              setStep("form");
+            }}
+          />
+        )}
+      </Modal>
+    );
+  }
+
   return (
-    <Modal title={signup ? "Create your account" : "Log in"} onClose={onClose} testId="auth-dialog">
+    <Modal key="form" title={signup ? "Create your account" : "Log in"} onClose={onClose} testId="auth-dialog">
       <h2 className="pr-8 text-2xl">{signup ? "Create your account" : "Welcome back"}</h2>
       <p className="mt-1 text-sm text-ink-muted">
         {signup ? "Sign up to keep your work with your Finesse account." : "Log in to your Finesse account."}
@@ -146,6 +201,29 @@ export default function AuthDialog({ mode, onModeChange, onClose, onSuccess }: P
           )}
         </label>
 
+        {!signup && (
+          <p className="-mt-1 text-right text-sm">
+            <button
+              type="button"
+              onClick={() => {
+                setError("");
+                setNotice("");
+                setStep("forgot");
+              }}
+              data-testid="auth-forgot"
+              className="text-ink-muted underline-offset-2 hover:text-ink hover:underline"
+            >
+              Forgot password?
+            </button>
+          </p>
+        )}
+
+        {notice && !error && (
+          <p role="status" className="text-sm text-lime" data-testid="auth-notice">
+            {notice}
+          </p>
+        )}
+
         {error && (
           <p role="alert" className="text-sm text-danger" data-testid="auth-error">
             {error}
@@ -156,7 +234,7 @@ export default function AuthDialog({ mode, onModeChange, onClose, onSuccess }: P
           type="submit"
           disabled={submit.isPending}
           data-testid="auth-submit"
-          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-row bg-lime font-heading text-[15px] font-bold text-black transition-[transform,box-shadow] duration-150 hover:shadow-[0_0_24px_rgba(204,255,0,0.3)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-row bg-lime font-heading text-[15px] font-bold text-on-accent transition-[transform,box-shadow] duration-150 hover:shadow-[0_0_24px_color-mix(in_srgb,var(--color-lime)_30%,transparent)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {submit.isPending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
           {submit.isPending ? (signup ? "Creating account…" : "Logging in…") : signup ? "Sign up" : "Log in"}

@@ -107,7 +107,7 @@ function WorkspaceInner({ id }: { id: string }) {
               </button>
               <Link
                 to="/video"
-                className="inline-flex h-11 items-center rounded-row bg-lime px-5 font-heading font-bold text-black transition-transform duration-150 active:scale-95"
+                className="inline-flex h-11 items-center rounded-row bg-lime px-5 font-heading font-bold text-on-accent transition-transform duration-150 active:scale-95"
               >
                 New reel
               </Link>
@@ -188,7 +188,7 @@ function WorkspaceInner({ id }: { id: string }) {
               onClick={() => runExport("pdf")}
               disabled={!video || !!exporting}
               data-testid="export-pdf-button"
-              className="inline-flex h-10 items-center gap-2 rounded-row bg-lime px-4 text-sm font-bold text-black transition-[transform,box-shadow] duration-150 hover:shadow-[0_0_24px_rgba(204,255,0,0.35)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-10 items-center gap-2 rounded-row bg-lime px-4 text-sm font-bold text-on-accent transition-[transform,box-shadow] duration-150 hover:shadow-[0_0_24px_color-mix(in_srgb,var(--color-lime)_35%,transparent)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download className="size-4" aria-hidden /> PDF
             </button>
@@ -208,7 +208,7 @@ function WorkspaceInner({ id }: { id: string }) {
           <div className="space-y-4 px-4 pb-8">
             {deck}
             <div
-              className="sticky top-14 z-30 -mx-4 flex gap-1 border-b border-line bg-[rgba(11,12,16,0.92)] px-4 py-2 backdrop-blur-[24px]"
+              className="sticky top-14 z-30 -mx-4 flex gap-1 border-b border-line bg-[color-mix(in_srgb,var(--color-page)_92%,transparent)] px-4 py-2 backdrop-blur-[24px]"
               role="tablist"
               aria-label="Workspace panels"
             >
@@ -222,7 +222,7 @@ function WorkspaceInner({ id }: { id: string }) {
                   data-testid={`workspace-tab-${t}`}
                   className={cn(
                     "h-9 flex-1 rounded-row text-sm font-semibold capitalize transition-colors duration-150",
-                    tab === t ? "bg-lime text-black" : "text-ink-muted hover:bg-panel-hover",
+                    tab === t ? "bg-lime text-on-accent" : "text-ink-muted hover:bg-panel-hover",
                   )}
                 >
                   {t}

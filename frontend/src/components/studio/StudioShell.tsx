@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { Clapperboard, FlaskConical, MessagesSquare, PanelLeft, X } from "lucide-react";
+import { Clapperboard, FlaskConical, MessagesSquare, PanelLeft, Sparkles, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import HistorySidebar from "@/components/studio/HistorySidebar";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -10,7 +10,7 @@ const SIDEBAR_KEY = "finesse.archive";
 const modeClass = (active: boolean) =>
   cn(
     "inline-flex h-8 items-center gap-2 rounded-md px-3 text-sm font-semibold transition-colors duration-150",
-    active ? "bg-lime text-black" : "text-ink-muted hover:bg-panel-hover hover:text-ink",
+    active ? "bg-lime text-on-accent" : "text-ink-muted hover:bg-panel-hover hover:text-ink",
   );
 
 export default function StudioShell({ children }: { children: ReactNode }) {
@@ -30,7 +30,7 @@ export default function StudioShell({ children }: { children: ReactNode }) {
   const chatMode = location.pathname.startsWith("/chat");
   const videoMode = location.pathname.startsWith("/video") || location.pathname.startsWith("/v/");
   // Chat has its own conversation list; the other two tools get the shared archive sidebar
-  const hasSidebar = !chatMode;
+  const hasSidebar = !chatMode && !location.pathname.startsWith("/pricing");
   const sidebarMode = researchMode ? "research" : "video";
   const columnOpen = hasSidebar && wide && !collapsed;
 
@@ -56,7 +56,7 @@ export default function StudioShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-40 h-14 border-b border-line bg-[rgba(11,12,16,0.85)] backdrop-blur-[24px]">
+      <header className="sticky top-0 z-40 h-14 border-b border-line bg-[color-mix(in_srgb,var(--color-page)_85%,transparent)] backdrop-blur-[24px]">
         <div className="flex h-full items-center gap-3 px-4 md:px-8">
           <Link to="/chat" className="group flex items-center gap-2.5" data-testid="shell-logo-link" aria-label="Finesse home">
             <img
@@ -64,7 +64,7 @@ export default function StudioShell({ children }: { children: ReactNode }) {
               alt=""
               width={36}
               height={41}
-              className="h-9 w-auto transition-transform duration-150 group-hover:scale-105"
+              className="logo-mark h-9 w-auto transition-transform duration-150 group-hover:scale-105"
               data-testid="shell-logo-image"
             />
             <span className="hidden font-heading text-lg font-bold tracking-tight text-ink md:inline">
@@ -129,6 +129,18 @@ export default function StudioShell({ children }: { children: ReactNode }) {
             </Link>
           </div>
 
+          <Link
+            to="/pricing"
+            data-testid="nav-pricing"
+            aria-current={location.pathname.startsWith("/pricing") ? "page" : undefined}
+            className={cn(
+              "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-sm font-semibold transition-colors duration-150 sm:px-3",
+              location.pathname.startsWith("/pricing") ? "text-lime" : "text-ink-muted hover:bg-panel-hover hover:text-ink",
+            )}
+          >
+            <Sparkles className="size-4" aria-hidden />
+            <span className="hidden sm:inline">Plans</span>
+          </Link>
         </div>
       </header>
 

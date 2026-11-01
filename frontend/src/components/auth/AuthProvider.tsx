@@ -59,7 +59,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   // Ctrl+Shift+, opens Settings (shown as a hint in the account menu)
   useEffect(() => {
-    if (!user) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && (e.key === "," || e.key === "<" || e.code === "Comma")) {
         e.preventDefault();
@@ -68,7 +67,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [user]);
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({ user, loading: isPending, openAuth, openSettings, logout }),
@@ -92,9 +91,8 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
         />
       )}
 
-      {settingsOpen && user && (
-        <SettingsDialog user={user} onClose={() => setSettingsOpen(false)} onSaved={setUser} />
-      )}
+      {/* guests get Settings too: it holds the appearance (day / night mode and accent colour) */}
+      {settingsOpen && <SettingsDialog user={user} onClose={() => setSettingsOpen(false)} onSaved={setUser} />}
     </AuthContext.Provider>
   );
 }

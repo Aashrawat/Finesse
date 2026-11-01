@@ -18,6 +18,10 @@ COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "").strip().lower() in {"1", "tr
 _login_by_ip = RateLimiter(10, 60)
 _login_by_email = RateLimiter(8, 300)
 _signup_by_ip = RateLimiter(10, 600)
+_code_by_ip = RateLimiter(20, 600)  # entering emailed codes
+_code_by_email = RateLimiter(10, 600)
+_resend_by_ip = RateLimiter(10, 600)  # asking for emailed codes
+_resend_by_email = RateLimiter(5, 600)
 
 
 class Credentials(BaseModel):
@@ -27,6 +31,18 @@ class Credentials(BaseModel):
 
 class Signup(Credentials):
     name: str = Field(default="", max_length=200)
+
+
+class EmailOnly(BaseModel):
+    email: str = Field(default="", max_length=320)
+
+
+class Verify(EmailOnly):
+    code: str = Field(default="", max_length=20)
+
+
+class Reset(Verify):
+    password: str = Field(default="", max_length=1024)
 
 
 class Profile(BaseModel):
@@ -70,14 +86,67 @@ def current_user(request: Request) -> dict | None:
         return None
 
 
+def _needs_verification(user: dict) -> dict:
+    return {"verification_required": True, "email": user["email"]}
+
+
 @router.post("/signup")
 def signup(body: Signup, request: Request, response: Response):
+    """Creates the account but does not log in: a 6-digit code is emailed and must be entered at /verify first."""
     _signup_by_ip.check(_ip(request))
     try:
         user = service.create_user(body.name, body.email, body.password)
+        service.send_verification(user, quiet_cooldown=True)  # a sign-up retried within a minute reuses the code just sent
+        return _needs_verification(user)
+    except (service.AuthError, DatabaseUnavailable, PyMongoError) as exc:
+        raise _fail(exc)
+
+
+@router.post("/verify")
+def verify(body: Verify, request: Request, response: Response):
+    """Checks the emailed code. Only now is the account active and a login session issued."""
+    _code_by_ip.check(_ip(request))
+    _code_by_email.check(body.email.strip().lower()[:254])
+    try:
+        user = service.verify_email(body.email, body.code)
         return _start_login(response, user)
     except (service.AuthError, DatabaseUnavailable, PyMongoError) as exc:
         raise _fail(exc)
+
+
+@router.post("/resend")
+def resend(body: EmailOnly, request: Request):
+    """Emails a new sign-up code. Always answers ok, whether or not the address has an account."""
+    _resend_by_ip.check(_ip(request))
+    _resend_by_email.check(body.email.strip().lower()[:254])
+    try:
+        service.resend_code(body.email, "verify")
+    except (service.AuthError, DatabaseUnavailable, PyMongoError) as exc:
+        raise _fail(exc)
+    return {"ok": True}
+
+
+@router.post("/forgot")
+def forgot(body: EmailOnly, request: Request):
+    """Emails a password-reset code. Always answers ok, whether or not the address has an account."""
+    _resend_by_ip.check(_ip(request))
+    _resend_by_email.check(body.email.strip().lower()[:254])
+    try:
+        service.resend_code(body.email, "reset")
+    except (service.AuthError, DatabaseUnavailable, PyMongoError) as exc:
+        raise _fail(exc)
+    return {"ok": True}
+
+
+@router.post("/reset")
+def reset(body: Reset, request: Request):
+    _code_by_ip.check(_ip(request))
+    _code_by_email.check(body.email.strip().lower()[:254])
+    try:
+        service.reset_password(body.email, body.code, body.password)
+    except (service.AuthError, DatabaseUnavailable, PyMongoError) as exc:
+        raise _fail(exc)
+    return {"ok": True}
 
 
 @router.post("/login")
@@ -86,6 +155,10 @@ def login(body: Credentials, request: Request, response: Response):
     _login_by_email.check(body.email.strip().lower()[:254])
     try:
         user = service.authenticate(body.email, body.password)
+        if not user.get("email_verified", True):
+            # right password, but the email was never confirmed: no login, send (or reuse) a code instead
+            service.send_verification(user, quiet_cooldown=True)
+            return _needs_verification(user)
         return _start_login(response, user)
     except (service.AuthError, DatabaseUnavailable, PyMongoError) as exc:
         raise _fail(exc)

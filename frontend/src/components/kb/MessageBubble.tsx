@@ -1,6 +1,7 @@
 import { memo, useState } from "react";
 import { AlertTriangle, Check, Copy, Square } from "lucide-react";
 import Markdown from "@/components/research/Markdown";
+import GeneratedImages from "@/components/kb/GeneratedImages";
 import MessageAttachments from "@/components/kb/MessageAttachments";
 import Sources from "@/components/kb/Sources";
 import type { KbMessage } from "@/lib/types";
@@ -54,7 +55,7 @@ function MessageBubble({ message, conversationId }: { message: KbMessage; conver
   return (
     <div className="group flex gap-3" data-testid="kb-message-assistant" data-streaming={message.streaming ? "true" : "false"}>
       <div className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full border border-line bg-panel">
-        <img src="/logo.png" alt="" className="h-4 w-auto" />
+        <img src="/logo.png" alt="" className="logo-mark h-4 w-auto" />
       </div>
 
       <div className="min-w-0 flex-1">
@@ -67,6 +68,10 @@ function MessageBubble({ message, conversationId }: { message: KbMessage; conver
               </span>
             )}
           </div>
+        )}
+
+        {message.images && message.images.length > 0 && (
+          <GeneratedImages images={message.images} conversationId={conversationId} />
         )}
 
         {message.content && (

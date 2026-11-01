@@ -34,7 +34,7 @@ function AssistantText({ text, onCite }: { text: string; onCite: (s: number) => 
             type="button"
             onClick={() => onCite(token.seconds)}
             data-testid={`chat-timestamp-${token.seconds}`}
-            className="mx-0.5 rounded-full bg-cyan/15 px-1.5 py-px font-mono text-xs font-semibold text-cyan transition-colors duration-150 hover:bg-cyan hover:text-black"
+            className="mx-0.5 rounded-full bg-cyan/15 px-1.5 py-px font-mono text-xs font-semibold text-cyan transition-colors duration-150 hover:bg-cyan hover:text-page"
           >
             {token.label}
           </button>
@@ -129,7 +129,7 @@ function ChatPanel({ videoId, onCite, className }: Props) {
           <h2 className="text-[22px]">Ask the reel</h2>
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">Answers cite timestamps</p>
         </div>
-        <span className="grid size-9 place-items-center rounded-row bg-cyan text-black">
+        <span className="grid size-9 place-items-center rounded-row bg-cyan text-page">
           <Sparkles className="size-4" aria-hidden />
         </span>
       </div>
@@ -157,7 +157,7 @@ function ChatPanel({ videoId, onCite, className }: Props) {
         {messages.map((m) =>
           m.role === "user" ? (
             <div key={m.id} className="flex justify-end">
-              <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-lime px-4 py-2.5 text-[15px] text-black" data-testid="chat-message-user">
+              <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-lime px-4 py-2.5 text-[15px] text-on-accent" data-testid="chat-message-user">
                 {m.content}
               </div>
             </div>
@@ -233,7 +233,7 @@ function ChatPanel({ videoId, onCite, className }: Props) {
           data-testid="chat-submit-button"
           className={cn(
             "grid size-11 shrink-0 place-items-center rounded-row transition-[transform,background-color] duration-150 active:scale-95",
-            canSend ? "bg-lime text-black" : "cursor-not-allowed bg-line text-ink-faint",
+            canSend ? "bg-lime text-on-accent" : "cursor-not-allowed bg-line text-ink-faint",
           )}
         >
           <Send className="size-4" aria-hidden />

@@ -156,11 +156,32 @@ def discard(session_id: str, conversation_id: str, items: list[Attachment]) -> N
 
 
 def image_path(session_id: str, conversation_id: str, att_id: str) -> Path | None:
+    """An image of this conversation: a photo the user attached (.jpg) or one the chatbot generated (.png)."""
+    for suffix in (".jpg", ".png"):
+        try:
+            path = _path(session_id, conversation_id, att_id, suffix)
+        except ValueError:
+            return None
+        if path.is_file():
+            return path
+    return None
+
+
+def save_generated(session_id: str, conversation_id: str, png: bytes) -> str:
+    """Store an image the chatbot made. Returns its id."""
+    att_id = uuid.uuid4().hex[:12]
+    conversation_dir(session_id, conversation_id).mkdir(parents=True, exist_ok=True)
+    _path(session_id, conversation_id, att_id, ".png").write_bytes(png)
+    return att_id
+
+
+def discard_generated(session_id: str, conversation_id: str, att_id: str) -> None:
+    """Remove a generated image whose turn was never stored."""
     try:
-        path = _path(session_id, conversation_id, att_id, ".jpg")
-    except ValueError:
-        return None
-    return path if path.is_file() else None
+        _path(session_id, conversation_id, att_id, ".png").unlink(missing_ok=True)
+        conversation_dir(session_id, conversation_id).rmdir()  # only succeeds when empty
+    except (ValueError, OSError):
+        pass
 
 
 def _attachments_of(conv: dict[str, Any], kind: str) -> list[dict[str, Any]]:
@@ -180,15 +201,16 @@ def image_part(jpeg: bytes) -> dict[str, Any]:
     return {"type": "image_url", "image_url": {"url": _data_url(jpeg), "detail": "auto"}}
 
 
-def history_messages(conv: dict[str, Any]) -> list[dict[str, Any]]:
+def history_messages(conv: dict[str, Any], resend_images: bool = True) -> list[dict[str, Any]]:
     """Recent turns as chat messages. Earlier attachments stay in context: their names are noted, and the
-    latest few images are shown again so follow-up questions about them work."""
+    latest few images are shown again so follow-up questions about them work. Pass resend_images=False when
+    the new message brings its own files, so old pictures don't compete with them."""
     from core.kb import memory
 
     window = memory.recent_messages(conv)
     # which images get re-sent: the most recent HISTORY_IMAGES in the window
     image_ids = [a["id"] for m in window for a in m.get("attachments", []) if a.get("kind") == "image"]
-    resend = set(image_ids[-config.HISTORY_IMAGES:]) if config.HISTORY_IMAGES > 0 else set()
+    resend = set(image_ids[-config.HISTORY_IMAGES:]) if resend_images and config.HISTORY_IMAGES > 0 else set()
 
     out: list[dict[str, Any]] = []
     for m in window:
@@ -216,14 +238,29 @@ class _Doc:
     pages: list[tuple[int, str]]
 
 
+def earlier_documents(conv: dict[str, Any]) -> list[str]:
+    """Names of the documents attached in earlier messages of this conversation."""
+    return [a["name"] for a in _attachments_of(conv, "document")]
+
+
 def _load_docs(conv: dict[str, Any], new: list[Attachment]) -> list[_Doc]:
+    """The documents the answer may use. A document attached with this message replaces the earlier ones
+    (like ChatGPT / Claude): otherwise a question about the new file would be answered from the old ones too.
+    A follow-up question without a new document uses the documents of the most recent message that had some."""
+    fresh = [_Doc(a.id, a.name, a.pages) for a in new if a.kind == "document"]
+    if fresh:
+        return fresh
+    latest: list[dict[str, Any]] = []
+    for message in reversed(conv["messages"]):
+        latest = [a for a in message.get("attachments", []) if a.get("kind") == "document"]
+        if latest:
+            break
     docs: list[_Doc] = []
-    for a in _attachments_of(conv, "document"):
+    for a in latest:
         path = _path(conv["session_id"], conv["id"], a["id"], ".doc.json")
         if path.is_file():
             pages = [(int(p), str(t)) for p, t in json.loads(path.read_text(encoding="utf-8"))]
             docs.append(_Doc(a["id"], a["name"], pages))
-    docs += [_Doc(a.id, a.name, a.pages) for a in new if a.kind == "document"]
     return docs
 
 

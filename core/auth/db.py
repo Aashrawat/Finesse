@@ -29,6 +29,12 @@ def _ensure_indexes(db) -> None:
     db.users.create_index("email", unique=True)
     db.sessions.create_index("token_hash", unique=True)
     db.sessions.create_index("expires_at", expireAfterSeconds=0)  # MongoDB deletes expired logins itself
+    db.sessions.create_index("user_id")  # password reset ends all of a user's logins
+    db.verifications.create_index([("user_id", 1), ("purpose", 1)], unique=True)
+    db.verifications.create_index("expires_at", expireAfterSeconds=0)  # expired codes clean themselves up
+    db.users.create_index("subscription.customer_id", sparse=True)  # Stripe webhooks find the user by customer
+    db.stripe_events.create_index("created_at", expireAfterSeconds=60 * 86400)  # event ids are kept 60 days
+    db.email_log.create_index("created_at", expireAfterSeconds=180 * 86400)
 
 
 def get_db():

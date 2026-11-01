@@ -111,6 +111,16 @@ export interface KbAttachment {
   previewUrl?: string; // client-side only: a local preview for the message that was just sent
 }
 
+/** A picture the chatbot generated for an answer. */
+export interface KbGeneratedImage {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  prompt?: string; // what the image generator was asked
+  model?: string;
+}
+
 export interface KbMessage {
   id: string;
   role: "user" | "assistant";
@@ -118,6 +128,7 @@ export interface KbMessage {
   sources: KbSource[];
   created_at: string;
   attachments?: KbAttachment[];
+  images?: KbGeneratedImage[]; // assistant messages: pictures the chatbot created
   stopped?: boolean; // generation was stopped by the user
   error?: string; // the request failed (shown in place of the answer)
   streaming?: boolean; // client-side only
@@ -159,6 +170,45 @@ export interface IngestResult {
   chunks: number;
 }
 
+/** What a visitor may still use: the free allowance of a guest, or today's use on a logged-in user's plan. */
+export interface ChatQuota {
+  guest: boolean;
+  blocked: boolean;
+  // guests
+  files_used?: number;
+  files_limit?: number;
+  tokens_used?: number;
+  tokens_limit?: number;
+  // logged-in users
+  plan?: string;
+  plan_name?: string;
+  model?: string;
+  messages_used?: number;
+  messages_limit?: number;
+  images_used?: number;
+  images_limit?: number;
+}
+
+export interface PlanInfo {
+  id: string;
+  name: string;
+  price: number; // per month
+  tagline: string;
+  model: string;
+  daily_messages: number;
+  daily_images: number;
+  features: { text: string; soon: boolean }[];
+}
+
+export interface PlansResponse {
+  plans: PlanInfo[];
+  current: string | null; // null when not logged in
+  usage: ChatQuota | null;
+  billing_enabled: boolean; // Stripe is set up: plans are bought through Checkout
+  can_switch: boolean; // development switch (only when Stripe isn't set up)
+  currency: string;
+}
+
 export interface ChatDone {
   latency_ms: number;
   ttft_ms: number | null;
@@ -180,6 +230,12 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
-  plan: string; // "free" for now
+  plan: string; // "free" | "pro" | "premium"
+  email_verified: boolean;
+  subscription: {
+    status: string; // Stripe's: "inactive" | "active" | "past_due" | "canceled" ...
+    cancel_at_period_end: boolean;
+    current_period_end: string | null;
+  };
   created_at: string;
 }

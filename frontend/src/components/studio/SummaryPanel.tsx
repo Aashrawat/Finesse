@@ -100,7 +100,7 @@ function SummaryPanel({ video, loading, error, onRetry }: Props) {
                 <ol className="mt-3 space-y-2.5">
                   {summary.key_points.map((point, i) => (
                     <li key={i} className="group flex gap-3">
-                      <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-md bg-track font-mono text-[11px] font-bold text-lime transition-colors duration-150 group-hover:bg-lime group-hover:text-black">
+                      <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-md bg-track font-mono text-[11px] font-bold text-lime transition-colors duration-150 group-hover:bg-lime group-hover:text-on-accent">
                         {i + 1}
                       </span>
                       <span className="text-[15px] leading-relaxed text-ink-body">{point}</span>

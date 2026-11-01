@@ -4,6 +4,7 @@ import Workspace from "@/pages/Workspace";
 import ResearchHome from "@/pages/ResearchHome";
 import ResearchReport from "@/pages/ResearchReport";
 import KbChat from "@/pages/KbChat";
+import Pricing from "@/pages/Pricing";
 
 export default function App() {
   return (
@@ -18,6 +19,8 @@ export default function App() {
       <Route path="/research/:id" element={<ResearchReport />} />
       {/* Knowledge-base chat (one route with an optional id, so switching chats doesn't remount the page) */}
       <Route path="/chat/:id?" element={<KbChat />} />
+      {/* Subscription plans */}
+      <Route path="/pricing" element={<Pricing />} />
       <Route path="*" element={<Navigate to="/chat" replace />} />
     </Routes>
   );

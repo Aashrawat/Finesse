@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, PanelLeft, X } from "lucide-react";
 import { toast } from "sonner";
 import StudioShell from "@/components/studio/StudioShell";
 import ConversationSidebar from "@/components/kb/ConversationSidebar";
 import MessageBubble from "@/components/kb/MessageBubble";
 import Composer from "@/components/kb/Composer";
+import { GuestUsage, LoginWall, PlanLimitWall, PlanUsage } from "@/components/kb/GuestLimit";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { kbApi, streamChat } from "@/lib/kbApi";
 import type { KbAttachment, KbMessage } from "@/lib/types";
 
@@ -17,6 +19,22 @@ export default function KbChat() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  // Visitors who aren't logged in get a small free allowance (2 files, 1000 tokens); the server counts it.
+  // The key includes the user so logging in or out fetches it again.
+  const { data: quota } = useQuery({
+    queryKey: ["kb-quota", user?.id ?? "guest"],
+    queryFn: kbApi.quota,
+    staleTime: 0,
+    retry: false,
+  });
+  const guestBlocked = !user && !!quota?.guest && quota.blocked;
+  // A logged-in user's daily messages are limited by their plan
+  const planBlocked = !!user && !!quota && !quota.guest && quota.blocked;
+  const guestFilesLeft =
+    !user && quota?.guest ? Math.max(0, (quota.files_limit ?? 0) - (quota.files_used ?? 0)) : undefined;
+
   // "New chat" navigates with a fresh token so it resets the screen even when the URL doesn't change
   // (e.g. after a failed first message, when no conversation was ever created).
   const fresh = (location.state as { fresh?: number } | null)?.fresh;
@@ -138,6 +156,7 @@ export default function KbChat() {
         { message: text, conversation_id: id, files },
         {
           onStatus: (status) => patch((m) => ({ ...m, status })),
+          onImage: (image) => patch((m) => ({ ...m, images: [...(m.images ?? []), image] })),
           onMeta: (meta) => {
             setTitle((t) => t || meta.title);
             if (!id) {
@@ -182,6 +201,7 @@ export default function KbChat() {
         setStreaming(false);
       }
       queryClient.invalidateQueries({ queryKey: ["kb-conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["kb-quota"] }); // the turn may have used up the guest allowance or the day's messages
     }
   }
 
@@ -244,7 +264,7 @@ export default function KbChat() {
                   <button
                     type="button"
                     onClick={() => navigate("/chat")}
-                    className="mt-4 h-10 rounded-row bg-lime px-5 font-heading text-sm font-bold text-black"
+                    className="mt-4 h-10 rounded-row bg-lime px-5 font-heading text-sm font-bold text-on-accent"
                   >
                     Start a new chat
                   </button>
@@ -282,7 +302,23 @@ export default function KbChat() {
             </button>
           )}
 
-          <Composer streaming={streaming} onSend={send} onStop={stop} focusKey={id ?? "new"} />
+          {guestBlocked ? (
+            <LoginWall />
+          ) : planBlocked && quota ? (
+            <PlanLimitWall quota={quota} />
+          ) : (
+            <>
+              {quota && <GuestUsage quota={quota} />}
+              {quota && <PlanUsage quota={quota} />}
+              <Composer
+                streaming={streaming}
+                onSend={send}
+                onStop={stop}
+                focusKey={id ?? "new"}
+                guestFilesLeft={guestFilesLeft}
+              />
+            </>
+          )}
         </section>
       </div>
     </StudioShell>

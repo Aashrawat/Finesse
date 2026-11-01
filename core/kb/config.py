@@ -53,6 +53,29 @@ ATTACH_FULL_TOKENS = _int("KB_ATTACH_FULL_TOKENS", 30000)  # documents up to thi
 ATTACH_TOP_K = _int("KB_ATTACH_TOP_K", 10)  # longer ones: the best N passages for each question
 HISTORY_IMAGES = _int("KB_HISTORY_IMAGES", 3)  # earlier images re-sent with follow-up questions
 
+# --- Image generation (the chatbot draws an image when asked to) ----------------------------------
+IMAGES_ENABLED = _bool("KB_IMAGES", True)
+IMAGE_MODEL = os.getenv("KB_IMAGE_MODEL", "gpt-image-2")  # best quality; may need a verified OpenAI organisation
+IMAGE_FALLBACK_MODEL = os.getenv("KB_IMAGE_FALLBACK_MODEL", "gpt-image-1.5")  # used when the first model isn't available
+IMAGE_QUALITY = os.getenv("KB_IMAGE_QUALITY", "high")  # gpt-image models: low|medium|high (dall-e-3 gets "hd")
+IMAGE_TIMEOUT = _float("KB_IMAGE_TIMEOUT", 240.0)  # seconds; high quality images take a while
+IMAGE_RATE_LIMIT = _int("KB_IMAGE_RATE_LIMIT", 10)  # images per hour per session (they cost real money)
+GUEST_IMAGES = _bool("KB_GUEST_IMAGES", False)  # may visitors who aren't logged in generate images?
+
+# --- Guests (visitors who are not logged in) ---------------------------------------------------
+GUEST_MAX_FILES = _int("KB_GUEST_MAX_FILES", 2)  # files they may attach in total
+GUEST_MAX_TOKENS = _int("KB_GUEST_MAX_TOKENS", 1000)  # tokens of chat text (their messages + the answers) in total
+GUEST_USAGE_PATH = os.getenv("KB_GUEST_USAGE", os.path.join("data", "guest_usage.json"))
+GUEST_LIMIT_MESSAGE = "You've reached the free limit for guests. Log in to explore more."
+
+# --- Plans (Free / Pro / Premium: see core/kb/plans.py for the models and daily limits) ---------------
+PLAN_USAGE_PATH = os.getenv("KB_PLAN_USAGE", os.path.join("data", "plan_usage.json"))
+# Lets a logged-in user switch their own plan without paying. For development and demos only: leave it off
+# in production until real payments are connected.
+PLAN_DEV_SWITCH = _bool("PLANS_DEV_SWITCH", False)
+# How hard the newer (gpt-5 / gpt-6) models think before answering: minimal|low|medium|high. Lower = faster.
+REASONING_EFFORT = os.getenv("KB_REASONING_EFFORT", "low")
+
 # --- Vector DB (ChromaDB, local) ----------------------------------------------
 CHROMA_PATH = os.getenv("KB_CHROMA_PATH", os.path.join("data", "kb_chroma"))
 COLLECTION = os.getenv("KB_COLLECTION", "knowledge_base")

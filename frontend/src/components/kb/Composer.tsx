@@ -1,8 +1,9 @@
 ﻿import { useCallback, useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent } from "react";
-import { ArrowUp, Camera, FileText, Images, Paperclip, Plus, Square, X } from "lucide-react";
+import { ArrowUp, Camera, FileText, Images, Mic, Paperclip, Plus, Square, X } from "lucide-react";
 import { toast } from "sonner";
 import CameraDialog from "@/components/kb/CameraDialog";
 import { fileLabel, formatSize } from "@/components/kb/MessageAttachments";
+import { useSpeechInput } from "@/lib/useSpeechInput";
 import { cn } from "@/lib/utils";
 
 const MAX_CHARS = 4000;
@@ -28,11 +29,13 @@ interface Props {
   onStop: () => void;
   /** Focus the box whenever this changes (e.g. a new chat was opened). */
   focusKey?: string;
+  /** Guests (not logged in) may only attach a few files in total: how many they still can. */
+  guestFilesLeft?: number;
 }
 
 const isImageFile = (f: File) => f.type.startsWith("image/");
 
-export default function Composer({ streaming, onSend, onStop, focusKey }: Props) {
+export default function Composer({ streaming, onSend, onStop, focusKey, guestFilesLeft }: Props) {
   const [text, setText] = useState("");
   const [pending, setPending] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -45,6 +48,23 @@ export default function Composer({ streaming, onSend, onStop, focusKey }: Props)
   const menuRoot = useRef<HTMLDivElement>(null);
   const pendingRef = useRef(pending);
   pendingRef.current = pending;
+
+  // Voice input: what was already typed stays, and the spoken words are added after it as they are recognised
+  const typedBeforeSpeech = useRef("");
+  const voice = useSpeechInput(
+    (said) => setText(typedBeforeSpeech.current + said),
+    (message) => toast.error(message),
+  );
+
+  function toggleVoice() {
+    if (voice.listening) {
+      voice.stop();
+      return;
+    }
+    typedBeforeSpeech.current = text && !/\s$/.test(text) ? `${text} ` : text;
+    voice.start();
+    ref.current?.focus();
+  }
 
   // Grow with the content, up to ~8 lines
   useEffect(() => {
@@ -83,6 +103,7 @@ export default function Composer({ streaming, onSend, onStop, focusKey }: Props)
 
   function submit() {
     if (!canSend) return;
+    voice.abort();
     const files = pending.map((p) => p.file);
     pending.forEach((p) => p.url && URL.revokeObjectURL(p.url)); // the sent message makes its own previews
     setPending([]);
@@ -110,6 +131,13 @@ export default function Composer({ streaming, onSend, onStop, focusKey }: Props)
         rejected.push(`${file.name}: attach a PDF, image, TXT, MD or DOCX file`);
       } else if (file.size > MAX_FILE_MB * 1024 * 1024) {
         rejected.push(`${file.name}: larger than ${MAX_FILE_MB} MB`);
+      } else if (guestFilesLeft !== undefined && next.length >= guestFilesLeft) {
+        rejected.push(
+          guestFilesLeft > 0
+            ? `Guests can attach ${guestFilesLeft} more file${guestFilesLeft === 1 ? "" : "s"}. Log in to explore more.`
+            : "You've used your free files. Log in to explore more.",
+        );
+        break;
       } else if (next.length >= MAX_FILES) {
         rejected.push(`You can attach up to ${MAX_FILES} files per message`);
         break;
@@ -256,14 +284,40 @@ export default function Composer({ streaming, onSend, onStop, focusKey }: Props)
                 ref={ref}
                 value={text}
                 rows={1}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => {
+                  voice.abort(); // typing takes over from speaking
+                  setText(e.target.value);
+                }}
                 onKeyDown={onKeyDown}
                 onPaste={onPaste}
-                placeholder={dragging ? "Drop files to attach them" : pending.length ? "Add a message, or just send" : "Ask Finesse"}
+                placeholder={
+                  voice.listening ? "Listening… speak now"
+                  : dragging ? "Drop files to attach them"
+                  : pending.length ? "Add a message, or just send"
+                  : "Ask Finesse"
+                }
                 data-testid="kb-input"
                 className="no-focus-ring block max-h-[200px] w-full resize-none bg-transparent px-2 py-2 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none"
               />
             </label>
+
+            {voice.supported && (
+              <button
+                type="button"
+                onClick={toggleVoice}
+                aria-label={voice.listening ? "Stop voice input" : "Speak your message"}
+                aria-pressed={voice.listening}
+                title={voice.listening ? "Stop listening" : "Speak your message"}
+                data-testid="kb-mic-button"
+                className={cn(
+                  "relative grid size-10 shrink-0 place-items-center rounded-full transition-colors duration-150",
+                  voice.listening ? "bg-danger/15 text-danger" : "text-ink-muted hover:bg-panel-hover hover:text-ink",
+                )}
+              >
+                {voice.listening && <span className="absolute inset-0 animate-ping rounded-full bg-danger/25" aria-hidden />}
+                <Mic className="relative size-5" aria-hidden />
+              </button>
+            )}
 
             {streaming ? (
               <button
@@ -271,7 +325,7 @@ export default function Composer({ streaming, onSend, onStop, focusKey }: Props)
                 onClick={onStop}
                 aria-label="Stop generating"
                 data-testid="kb-stop-button"
-                className="grid size-10 shrink-0 place-items-center rounded-xl bg-ink text-black transition-transform duration-150 active:scale-95"
+                className="grid size-10 shrink-0 place-items-center rounded-xl bg-ink text-page transition-transform duration-150 active:scale-95"
               >
                 <Square className="size-4 fill-current" aria-hidden />
               </button>
@@ -284,7 +338,7 @@ export default function Composer({ streaming, onSend, onStop, focusKey }: Props)
                 data-testid="kb-send-button"
                 className={cn(
                   "grid size-10 shrink-0 place-items-center rounded-xl transition-[transform,opacity,background-color] duration-150 active:scale-95",
-                  canSend ? "bg-lime text-black hover:shadow-[0_0_20px_rgba(204,255,0,0.3)]" : "bg-panel-hover text-ink-faint",
+                  canSend ? "bg-lime text-on-accent hover:shadow-[0_0_20px_color-mix(in_srgb,var(--color-lime)_30%,transparent)]" : "bg-panel-hover text-ink-faint",
                 )}
               >
                 <ArrowUp className="size-5" aria-hidden />

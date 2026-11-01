@@ -14,12 +14,14 @@ from pydantic import BaseModel
 
 from api.auth import router as auth_router
 from api.jobs import JOBS, collection_name, create_job, forget_chain, get_chain
+from api.billing import router as billing_router
 from api.kb import router as kb_router
+from api.plans import router as plans_router
 from api.research import router as research_router
 from api.store import delete_video_file, list_videos, load_video
 from core.vector_store import delete_vector_store
 
-UPLOAD_DIR = "uploads"
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
 ALLOWED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".mp4", ".mov", ".mkv", ".webm", ".ogg", ".flac", ".aac"}
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -39,6 +41,8 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(research_router)
 app.include_router(kb_router)
+app.include_router(plans_router)
+app.include_router(billing_router)
 
 
 class ChatRequest(BaseModel):

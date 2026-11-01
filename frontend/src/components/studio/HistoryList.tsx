@@ -123,7 +123,7 @@ export default function HistoryList({ activeId, onOpen, autoFocusSearch }: Props
                     <Film className="size-5" aria-hidden />
                   </div>
                 )}
-                <span className="absolute bottom-0.5 right-0.5 rounded bg-black/80 px-1 font-mono text-[10px] text-ink">
+                <span className="absolute bottom-0.5 right-0.5 rounded bg-black/80 px-1 font-mono text-[10px] text-white">
                   {formatClock(video.duration)}
                 </span>
               </div>

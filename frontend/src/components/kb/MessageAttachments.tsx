@@ -10,7 +10,7 @@ export const fileLabel = (a: { name: string; mime: string }) =>
   a.mime === "application/pdf" || /\.pdf$/i.test(a.name) ? "PDF" : (a.name.split(".").pop() ?? "File").toUpperCase();
 
 /** The image for a sent message: the local preview if we just sent it, else fetched from the server. */
-function useImageUrl(conversationId: string | undefined, a: KbAttachment): string | null {
+export function useImageUrl(conversationId: string | undefined, a: KbAttachment): string | null {
   const [url, setUrl] = useState<string | null>(a.previewUrl ?? null);
 
   useEffect(() => {

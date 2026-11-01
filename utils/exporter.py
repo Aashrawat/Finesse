@@ -4,7 +4,7 @@ from datetime import datetime
 
 from fpdf import FPDF
 
-EXPORT_DIR = "exports"
+EXPORT_DIR = os.getenv("EXPORT_DIR", "exports")  # hosts with one persistent disk point this inside it
 
 SECTIONS = [
     ("Summary", "summary"),

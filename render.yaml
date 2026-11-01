@@ -1,0 +1,39 @@
+# Render Blueprint: New > Blueprint, pick this repo. Secrets (sync: false) are asked for in the dashboard.
+services:
+  - type: web
+    name: finesse
+    runtime: docker
+    plan: standard            # 2 GB RAM; Whisper + torch need it. Use "pro" (4 GB) if transcription runs out of memory.
+    healthCheckPath: /
+    numInstances: 1           # job progress and rate limits are in memory: never run more than one
+    disk:
+      name: finesse-data
+      mountPath: /home/user/app/data
+      sizeGB: 10
+    envVars:
+      - key: APP_URL
+        sync: false           # e.g. https://finesse.onrender.com (or your own domain)
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: OTP_SECRET
+        generateValue: true
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_PRO
+        sync: false
+      - key: STRIPE_PRICE_PREMIUM
+        sync: false

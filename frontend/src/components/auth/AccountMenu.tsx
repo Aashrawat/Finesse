@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { AppWindow, ChevronRight, ChevronUp, CircleArrowUp, CircleHelp, Globe, Info, LogOut, Settings } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ function Separator() {
  */
 export default function AccountMenu() {
   const { user, loading, openAuth, openSettings, logout } = useAuth();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [learnOpen, setLearnOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -99,11 +101,20 @@ export default function AccountMenu() {
             type="button"
             onClick={() => openAuth("signup")}
             data-testid="account-signup"
-            className="h-10 rounded-row bg-lime text-sm font-bold text-black transition-shadow duration-150 hover:shadow-[0_0_20px_rgba(204,255,0,0.3)]"
+            className="h-10 rounded-row bg-lime text-sm font-bold text-on-accent transition-shadow duration-150 hover:shadow-[0_0_20px_color-mix(in_srgb,var(--color-lime)_30%,transparent)]"
           >
             Sign up
           </button>
         </div>
+        <button
+          type="button"
+          onClick={openSettings}
+          data-testid="account-guest-settings"
+          className="mt-2 flex h-9 w-full items-center justify-center gap-2 rounded-row text-sm text-ink-muted transition-colors duration-150 hover:bg-panel-hover hover:text-ink"
+        >
+          <Settings className="size-4" aria-hidden />
+          Settings
+        </button>
       </div>
     );
   }
@@ -141,14 +152,17 @@ export default function AccountMenu() {
             <Globe className="size-4 shrink-0 text-ink-muted" aria-hidden />
             <span className="flex-1">Language</span>
           </button>
+          {/* Hidden for now:
           {link(`${REPO}/issues`, <CircleHelp className="size-4 shrink-0 text-ink-muted" aria-hidden />, "Get help")}
+          */}
 
           <Separator />
 
-          <button type="button" role="menuitem" onClick={() => soon("Finesse is free for now. Paid plans aren't available yet.")} className={itemClass}>
+          <button type="button" role="menuitem" onClick={() => { close(); navigate("/pricing"); }} data-testid="account-upgrade" className={itemClass}>
             <CircleArrowUp className="size-4 shrink-0 text-ink-muted" aria-hidden />
             <span className="flex-1">Upgrade plan</span>
           </button>
+          {/* Hidden for now:
           <button type="button" role="menuitem" onClick={() => soon("Apps and extensions are coming soon.")} className={itemClass}>
             <AppWindow className="size-4 shrink-0 text-ink-muted" aria-hidden />
             <span className="flex-1">Get apps and extensions</span>
@@ -171,6 +185,7 @@ export default function AccountMenu() {
               {link(`${REPO}/issues/new`, <span className="size-4 shrink-0" aria-hidden />, "Report an issue")}
             </div>
           )}
+          */}
 
           <Separator />
 
