@@ -96,6 +96,8 @@ def signup(body: Signup, request: Request, response: Response):
     _signup_by_ip.check(_ip(request))
     try:
         user = service.create_user(body.name, body.email, body.password)
+        if user.get("email_verified"):
+            return _start_login(response, user)
         service.send_verification(user, quiet_cooldown=True)  # a sign-up retried within a minute reuses the code just sent
         return _needs_verification(user)
     except (service.AuthError, DatabaseUnavailable, PyMongoError) as exc:

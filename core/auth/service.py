@@ -25,6 +25,8 @@ SESSION_DAYS = int(os.getenv("AUTH_SESSION_DAYS", "30") or 30)
 MIN_PASSWORD = 8
 MAX_PASSWORD = 128
 MAX_NAME = 60
+# Comma-separated. These accounts always get Premium and are not demoted by Stripe.
+ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "finesse7047@gmail.com").split(",") if e.strip()}
 
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
@@ -129,6 +131,25 @@ def _iso(value) -> str | None:
     return (value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value).isoformat(timespec="seconds")
 
 
+def is_admin(doc: dict | None) -> bool:
+    return bool(doc) and (doc.get("role") == "admin" or (doc.get("email") or "").lower() in ADMIN_EMAILS)
+
+
+def apply_admin(doc: dict) -> dict:
+    """Keep the admin mailbox on Premium, even if they signed up as Free."""
+    if not is_admin(doc):
+        return doc
+    updates = {}
+    if doc.get("role") != "admin":
+        updates["role"] = "admin"
+    if doc.get("plan") != "premium":
+        updates["plan"] = "premium"
+    if updates:
+        get_db().users.update_one({"_id": doc["_id"]}, {"$set": updates})
+        doc.update(updates)
+    return doc
+
+
 def public_user(doc: dict) -> dict:
     sub = doc.get("subscription") or {}
     return {
@@ -136,6 +157,7 @@ def public_user(doc: dict) -> dict:
         "name": doc["name"],
         "email": doc["email"],
         "plan": doc.get("plan", "free"),
+        "role": "admin" if is_admin(doc) else "user",
         "email_verified": doc.get("email_verified", True),  # accounts made before verification existed count as verified
         "subscription": {
             "status": sub.get("status", "inactive"),
@@ -149,12 +171,15 @@ def public_user(doc: dict) -> dict:
 
 
 def create_user(name: str, email: str, password: str) -> dict:
+    address = clean_email(email)
+    admin = address in ADMIN_EMAILS
     doc = {
         "name": clean_name(name),
-        "email": clean_email(email),
+        "email": address,
         "password_hash": hash_password(check_password(password)),
-        "plan": "free",
-        "email_verified": False,  # becomes true when the 6-digit code from the sign-up email is entered
+        "plan": "premium" if admin else "free",
+        "role": "admin" if admin else "user",
+        "email_verified": admin,  # the seeded admin can log in without an emailed code
         "subscription": {"plan": "free", "status": "inactive"},
         "created_at": _now(),
     }
@@ -328,7 +353,7 @@ def user_for_token(token: str | None) -> dict | None:
     user = db.users.find_one({"_id": session["user_id"]})
     if user is not None and not user.get("email_verified", True):
         return None  # never a normal session for an address that wasn't confirmed
-    return user
+    return apply_admin(user) if user is not None else None
 
 
 def end_session(token: str | None) -> None:

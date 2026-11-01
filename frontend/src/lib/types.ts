@@ -233,6 +233,7 @@ export interface AuthUser {
   name: string;
   email: string;
   plan: string; // "free" | "pro" | "premium"
+  role?: "admin" | "user";
   email_verified: boolean;
   subscription: {
     status: string; // Stripe's: "inactive" | "active" | "past_due" | "canceled" ...

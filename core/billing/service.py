@@ -151,6 +151,11 @@ def _find_user(customer_id: str | None, *metadata_sources: Any) -> dict | None:
 
 def _set(user: dict, **fields: Any) -> dict:
     """Update the user's plan and/or subscription fields; returns the updated document."""
+    from core.auth import service as auth
+
+    # Admin keeps Premium even if a Stripe subscription is cancelled.
+    if "plan" in fields and auth.is_admin(user):
+        fields["plan"] = "premium"
     update: dict[str, Any] = {}
     for key, value in fields.items():
         update["plan" if key == "plan" else f"subscription.{key}"] = value
