@@ -1,6 +1,5 @@
 """Background processing. One worker thread: Whisper on CPU can only run one job at a time."""
 import os
-import re
 import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -19,10 +18,6 @@ _executor = ThreadPoolExecutor(max_workers=1)
 CHUNK_SECONDS = 600       # utils.audio_processor.chunk_audio splits audio into 10-minute chunks
 CUT_SECONDS = 25          # merge Whisper's short segments into ~25s "cuts" for the transcript view
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm"}
-
-_YOUTUBE_RE = re.compile(
-    r"(?:youtube\.com/(?:watch\?(?:[^#]*&)?v=|shorts/|embed/|live/)|youtu\.be/)([\w-]{11})"
-)
 
 
 @dataclass
@@ -156,35 +151,26 @@ def _run(job: Job) -> None:
         _set(job, "Preparing chat", 94)
         _CHAINS[job.id] = build_rag_chain(timestamped, collection_name(job.id))
 
-        is_url = job.source.startswith(("http://", "https://"))
-        youtube_id = None
-        if is_url:
-            match = _YOUTUBE_RE.search(job.source)
-            youtube_id = match.group(1) if match else None
-            source_type, source_ref = "youtube", job.source
-            media_path = None
-        else:
-            ext = os.path.splitext(job.source)[1].lower()
-            source_type = "video" if ext in VIDEO_EXTENSIONS else "audio"
-            source_ref = job.original_name or os.path.basename(job.source)
-            media_path = job.source
+        ext = os.path.splitext(job.source)[1].lower()
+        source_type = "video" if ext in VIDEO_EXTENSIONS else "audio"
+        source_ref = job.original_name or os.path.basename(job.source)
 
         save_video({
             "id": job.id,
             "title": title,
             "source_type": source_type,
             "source_ref": source_ref,
-            "thumbnail": f"https://i.ytimg.com/vi/{youtube_id}/hqdefault.jpg" if youtube_id else None,
+            "thumbnail": None,
             "duration": segments[-1]["end"],
             "created_at": datetime.now(timezone.utc).isoformat(),
-            "youtube_id": youtube_id,
+            "youtube_id": None,
             "language": job.language,
             "summary_text": summary,
             "action_items": action_items,
             "decisions": decisions,
             "questions": questions,
             "transcript": segments,
-            "media_path": media_path,   # server-side only, never sent to the browser
+            "media_path": job.source,   # server-side only, never sent to the browser
         })
 
         _set(job, "Done", 100)

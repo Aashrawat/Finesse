@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileAudio, Loader2, SquarePlay, Upload, X } from "lucide-react";
+import { FileAudio, Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import StudioShell from "@/components/studio/StudioShell";
 import ProcessingQueue from "@/components/studio/ProcessingQueue";
 import { api } from "@/lib/api";
-import { formatBytes, isYouTubeUrl } from "@/lib/format";
+import { formatBytes } from "@/lib/format";
 import type { JobStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-type Mode = "youtube" | "file";
 const SUPPORTED = ["mp3", "mp4", "m4a"];
 const extensionOf = (name: string) => name.split(".").pop()?.toLowerCase() ?? "";
 
@@ -26,15 +25,13 @@ export default function Intake() {
   const queryClient = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const [mode, setMode] = useState<Mode>("youtube");
-  const [url, setUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [job, setJob] = useState<JobStatus | null>(null);
 
-  const label = job ? (mode === "youtube" ? url.trim() : (file?.name ?? "")) : "";
+  const label = job ? (file?.name ?? "") : "";
 
   // Quick-load pills come from the archive
   const { data: recent } = useQuery({ queryKey: ["videos", ""], queryFn: () => api.listVideos() });
@@ -89,13 +86,7 @@ export default function Intake() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (submitting) return;
-
-    if (mode === "youtube") {
-      if (!isYouTubeUrl(url)) {
-        setError("That doesn't look like a valid YouTube link.");
-        return;
-      }
-    } else if (!file) {
+    if (!file) {
       setError("Choose an MP3, MP4 or M4A file first.");
       return;
     }
@@ -103,19 +94,13 @@ export default function Intake() {
     setError("");
     setSubmitting(true);
     try {
-      setJob(await api.startJob(mode === "youtube" ? { url: url.trim() } : { file: file! }));
+      setJob(await api.startJob({ file }));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't start processing");
     } finally {
       setSubmitting(false);
     }
   }
-
-  const segmentClass = (active: boolean) =>
-    cn(
-      "h-10 flex-1 rounded-md px-4 text-sm font-semibold transition-colors duration-150",
-      active ? "bg-lime text-on-accent" : "text-ink-muted hover:bg-panel-hover hover:text-ink",
-    );
 
   return (
     <StudioShell>
@@ -127,8 +112,7 @@ export default function Intake() {
               <span className="text-lime">I can help with video and audio files</span>
             </h1>
             <p className="mt-5 max-w-xl text-base text-ink-muted">
-              Drop in a YouTube link or a recording. Get a summary, a timestamped transcript, and a chat that
-              answers from the footage.
+              Drop in a recording. Get a summary, a timestamped transcript, and a chat that answers from the footage.
             </p>
           </section>
 
@@ -148,120 +132,78 @@ export default function Intake() {
               data-testid="intake-console"
               noValidate
             >
-              <div className="flex gap-1 rounded-row bg-track p-1" role="tablist" aria-label="Source type">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === "youtube"}
-                  onClick={() => { setMode("youtube"); setError(""); }}
-                  data-testid="intake-mode-youtube"
-                  className={segmentClass(mode === "youtube")}
-                >
-                  YouTube link
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === "file"}
-                  onClick={() => { setMode("file"); setError(""); }}
-                  data-testid="intake-mode-file"
-                  className={segmentClass(mode === "file")}
-                >
-                  Upload file
-                </button>
-              </div>
-
-              {mode === "youtube" ? (
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <label className="relative block flex-1">
-                    <span className="sr-only">YouTube URL</span>
-                    <SquarePlay className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-ink-faint" aria-hidden />
-                    <input
-                      type="url"
-                      value={url}
-                      onChange={(e) => { setUrl(e.target.value); setError(""); }}
-                      placeholder="https://www.youtube.com/watch?v=…"
-                      aria-invalid={!!error}
-                      data-testid="intake-youtube-input"
-                      className="h-14 w-full rounded-row border border-line bg-track pl-12 pr-4 text-base text-ink placeholder:text-ink-faint focus:border-lime/60 focus:outline-none"
-                    />
-                  </label>
-                  <SubmitButton submitting={submitting} />
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div
-                    onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-                    onDragLeave={() => setDragging(false)}
-                    onDrop={onDrop}
-                    data-testid="intake-file-dropzone"
-                    className={cn(
-                      "flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-row border-2 border-dashed p-6 text-center transition-colors duration-150",
-                      dragging ? "border-lime bg-lime/[0.06]" : "border-line bg-track",
-                    )}
-                  >
-                    <Upload
-                      className={cn(
-                        "size-10 text-ink-faint transition-transform duration-150",
-                        dragging && "scale-125 text-lime",
-                      )}
-                      aria-hidden
-                    />
-                    <p className="font-heading text-xl font-bold text-ink">Drop your reel here</p>
-                    <p className="text-sm text-ink-muted">
-                      or{" "}
-                      <button
-                        type="button"
-                        onClick={() => fileInput.current?.click()}
-                        data-testid="intake-file-browse"
-                        className="font-semibold text-lime underline underline-offset-4"
-                      >
-                        browse
-                      </button>{" "}
-                      your files
-                    </p>
-                    <div className="flex gap-1.5">
-                      {["MP3", "MP4", "M4A"].map((t) => (
-                        <span key={t} className="rounded-full border border-line px-2.5 py-0.5 font-mono text-[10px] text-ink-muted">
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-                    <input
-                      ref={fileInput}
-                      type="file"
-                      accept=".mp3,.mp4,.m4a,audio/*,video/*"
-                      className="hidden"
-                      onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
-                      data-testid="intake-file-input"
-                    />
-                  </div>
-
-                  {file && (
-                    <div className="flex items-center gap-3 rounded-row border border-line bg-track p-3" data-testid="intake-file-row">
-                      <FileAudio className="size-5 shrink-0 text-lime" aria-hidden />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-ink">{file.name}</p>
-                        <p className="font-mono text-[11px] text-ink-faint">{formatBytes(file.size)}</p>
-                      </div>
-                      <span className="rounded-full border border-line px-2 py-0.5 font-mono text-[10px] uppercase text-ink-muted">
-                        {extensionOf(file.name)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => { setFile(null); if (fileInput.current) fileInput.current.value = ""; }}
-                        aria-label="Remove file"
-                        data-testid="intake-file-remove"
-                        className="grid size-8 place-items-center rounded-md text-ink-muted transition-colors duration-150 hover:bg-panel-hover hover:text-ink"
-                      >
-                        <X className="size-4" aria-hidden />
-                      </button>
-                    </div>
+              <div className="space-y-3">
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={onDrop}
+                  data-testid="intake-file-dropzone"
+                  className={cn(
+                    "flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-row border-2 border-dashed p-6 text-center transition-colors duration-150",
+                    dragging ? "border-lime bg-lime/[0.06]" : "border-line bg-track",
                   )}
-
-                  <SubmitButton submitting={submitting} full />
+                >
+                  <Upload
+                    className={cn(
+                      "size-10 text-ink-faint transition-transform duration-150",
+                      dragging && "scale-125 text-lime",
+                    )}
+                    aria-hidden
+                  />
+                  <p className="font-heading text-xl font-bold text-ink">Drop your reel here</p>
+                  <p className="text-sm text-ink-muted">
+                    or{" "}
+                    <button
+                      type="button"
+                      onClick={() => fileInput.current?.click()}
+                      data-testid="intake-file-browse"
+                      className="font-semibold text-lime underline underline-offset-4"
+                    >
+                      browse
+                    </button>{" "}
+                    your files
+                  </p>
+                  <div className="flex gap-1.5">
+                    {["MP3", "MP4", "M4A"].map((t) => (
+                      <span key={t} className="rounded-full border border-line px-2.5 py-0.5 font-mono text-[10px] text-ink-muted">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept=".mp3,.mp4,.m4a,audio/*,video/*"
+                    className="hidden"
+                    onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
+                    data-testid="intake-file-input"
+                  />
                 </div>
-              )}
+
+                {file && (
+                  <div className="flex items-center gap-3 rounded-row border border-line bg-track p-3" data-testid="intake-file-row">
+                    <FileAudio className="size-5 shrink-0 text-lime" aria-hidden />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-ink">{file.name}</p>
+                      <p className="font-mono text-[11px] text-ink-faint">{formatBytes(file.size)}</p>
+                    </div>
+                    <span className="rounded-full border border-line px-2 py-0.5 font-mono text-[10px] uppercase text-ink-muted">
+                      {extensionOf(file.name)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { setFile(null); if (fileInput.current) fileInput.current.value = ""; }}
+                      aria-label="Remove file"
+                      data-testid="intake-file-remove"
+                      className="grid size-8 place-items-center rounded-md text-ink-muted transition-colors duration-150 hover:bg-panel-hover hover:text-ink"
+                    >
+                      <X className="size-4" aria-hidden />
+                    </button>
+                  </div>
+                )}
+
+                <SubmitButton submitting={submitting} />
+              </div>
 
               {error && (
                 <p role="alert" className="text-sm text-danger" data-testid="intake-error">
@@ -294,16 +236,13 @@ export default function Intake() {
   );
 }
 
-function SubmitButton({ submitting, full }: { submitting: boolean; full?: boolean }) {
+function SubmitButton({ submitting }: { submitting: boolean }) {
   return (
     <button
       type="submit"
       disabled={submitting}
       data-testid="intake-submit-button"
-      className={cn(
-        "inline-flex h-14 items-center justify-center gap-2 rounded-row bg-lime px-8 font-heading text-base font-bold text-on-accent transition-[transform,box-shadow] duration-150 hover:shadow-[0_0_30px_color-mix(in_srgb,var(--color-lime)_35%,transparent)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60",
-        full && "w-full",
-      )}
+      className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-row bg-lime px-8 font-heading text-base font-bold text-on-accent transition-[transform,box-shadow] duration-150 hover:shadow-[0_0_30px_color-mix(in_srgb,var(--color-lime)_35%,transparent)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {submitting ? (
         <>

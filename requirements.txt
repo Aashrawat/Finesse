@@ -1,5 +1,4 @@
 # ---- Audio ingestion ----
-yt-dlp>=2024.8.6            # download audio from YouTube URLs
 ffmpeg-python>=0.2.0        # Python wrapper (requires the ffmpeg binary on PATH)
 pydub>=0.25.1               # convert/chunk audio (requires ffmpeg binary on PATH)
 audioop-lts>=0.2.1; python_version >= "3.13"  # pydub needs audioop, removed in Python 3.13

@@ -190,10 +190,9 @@ export const api = {
     return request(`/api/research/${id}`, { method: "DELETE" });
   },
 
-  startJob(input: { url?: string; file?: File }): Promise<JobStatus> {
+  startJob(input: { file: File }): Promise<JobStatus> {
     const form = new FormData();
-    if (input.file) form.append("file", input.file);
-    else form.append("url", input.url ?? "");
+    form.append("file", input.file);
     return request<JobStatus>("/api/jobs", { method: "POST", body: form });
   },
 

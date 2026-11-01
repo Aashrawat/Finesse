@@ -54,7 +54,7 @@ def chat_loop(transcript: str) -> None:
 
 
 def main() -> None:
-    source = input("YouTube URL or audio/video file path: ").strip().strip('"')
+    source = input("Audio or video file path: ").strip().strip('"')
     if not source:
         print("No input given.")
         return

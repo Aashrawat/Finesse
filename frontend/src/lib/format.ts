@@ -77,9 +77,3 @@ export function extractCitations(text: string): number[] {
   return [...new Set(seconds)];
 }
 
-const YOUTUBE_RE =
-  /^(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)[\w-]{11}/i;
-
-export function isYouTubeUrl(url: string): boolean {
-  return YOUTUBE_RE.test(url.trim());
-}

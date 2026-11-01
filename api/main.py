@@ -2,12 +2,11 @@ from dotenv import load_dotenv
 load_dotenv()  # must run before importing core modules (they read env vars at import)
 
 import os
-import re
 import shutil
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -66,22 +65,16 @@ def _get_video(video_id: str) -> dict:
 # ---- Processing jobs -------------------------------------------------------
 
 @app.post("/api/jobs")
-def start_job(url: str | None = Form(None), file: UploadFile | None = File(None)):
-    original_name = None
-    if file is not None and file.filename:
-        ext = os.path.splitext(file.filename)[1].lower()
-        if ext not in ALLOWED_EXTENSIONS:
-            raise HTTPException(status_code=400, detail=f"Unsupported file type '{ext}'")
-        source = os.path.join(UPLOAD_DIR, f"{uuid.uuid4().hex}{ext}")
-        original_name = file.filename
-        with open(source, "wb") as out:
-            shutil.copyfileobj(file.file, out)
-    elif url and re.match(r"^https?://", url.strip()):
-        source = url.strip()
-    else:
-        raise HTTPException(status_code=400, detail="Provide a YouTube/http URL or upload a file")
-
-    return create_job(source, original_name).to_dict()
+def start_job(file: UploadFile | None = File(None)):
+    if file is None or not file.filename:
+        raise HTTPException(status_code=400, detail="Upload an MP3, MP4 or M4A file")
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type '{ext}'")
+    source = os.path.join(UPLOAD_DIR, f"{uuid.uuid4().hex}{ext}")
+    with open(source, "wb") as out:
+        shutil.copyfileobj(file.file, out)
+    return create_job(source, file.filename).to_dict()
 
 
 @app.get("/api/jobs/{job_id}")
