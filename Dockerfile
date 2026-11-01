@@ -6,7 +6,7 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# Express upload server (Cloudinary + Multer). Installed here so the runtime image can run it with Node 22.
+# Express upload server (Cloudinary + Multer): pure-JS dependencies, run by the runtime image's own nodejs.
 WORKDIR /upload
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
@@ -14,7 +14,7 @@ RUN npm ci --omit=dev
 # ---- 2) the app: FastAPI serves the API and the built frontend on one port ----
 FROM python:3.12-slim
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg git \
+    && apt-get install -y --no-install-recommends ffmpeg git nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # The app itself runs as a non-root user (see entrypoint.sh)
@@ -31,7 +31,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY --chown=user . .
 COPY --chown=user --from=web /web/dist ./frontend/dist
 COPY --from=web --chown=user:user /upload/node_modules ./node_modules
-COPY --from=web /usr/local/bin/node /usr/local/bin/node
 ENV UPLOAD_AUTOSTART=0
 RUN mkdir -p data && sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh
 
