@@ -3,7 +3,11 @@ load_dotenv()  # must run before importing core modules (they read env vars at i
 
 import os
 import shutil
+import socket
+import subprocess
+import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import requests as http_requests
@@ -26,7 +30,62 @@ ALLOWED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".mp4", ".mov", ".mkv", ".webm", "
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-app = FastAPI(title="Finesse")
+
+def _upload_port() -> int:
+    try:
+        return int(os.getenv("UPLOAD_PORT", "3001"))
+    except ValueError:
+        return 3001
+
+
+def _port_open(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.2)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _start_upload_server() -> subprocess.Popen | None:
+    """Start the Express image-upload route (Cloudinary + Multer) beside this API."""
+    if os.getenv("UPLOAD_AUTOSTART", "1").strip().lower() in {"0", "false", "no", "off"}:
+        return None
+    root = Path(__file__).resolve().parent.parent
+    script = root / "server" / "index.js"
+    node = shutil.which("node")
+    if node is None or not script.is_file():
+        print("Image upload server was not started (node or server/index.js is missing).", flush=True)
+        return None
+    port = _upload_port()
+    if _port_open(port):
+        return None
+    kwargs: dict = {}
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+    proc = subprocess.Popen([node, str(script)], cwd=str(root), **kwargs)
+    deadline = time.time() + 8
+    while time.time() < deadline:
+        if _port_open(port):
+            return proc
+        if proc.poll() is not None:
+            return None
+        time.sleep(0.15)
+    return proc
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    proc = _start_upload_server()
+    try:
+        yield
+    finally:
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+
+app = FastAPI(title="Finesse", lifespan=_lifespan)
 
 # CORS: the dev server proxies /api, so this only matters when the frontend is served from another
 # origin. Set CORS_ORIGINS="https://app.example.com,http://localhost:5173" in .env to change it.

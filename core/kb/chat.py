@@ -131,7 +131,7 @@ def build_attached_messages(
     messages.extend(history)
     if images:
         parts: list[dict[str, Any]] = [{"type": "text", "text": question}]
-        parts += [attachments.image_part(a.jpeg) for a in images]
+        parts += [attachments.image_content(a) for a in images]
         messages.append({"role": "user", "content": parts})
     else:
         messages.append({"role": "user", "content": question})
@@ -227,6 +227,7 @@ def _model_options(model: str) -> dict[str, Any]:
 async def stream_chat(
     conv: dict[str, Any], question: str, uploads: list[Upload] | None = None, is_guest: bool = False,
     plan: plans.Plan | None = None, user_id: str | None = None,
+    hosted_images: list[Attachment] | None = None,
 ) -> AsyncIterator[str]:
     """`question` is what the user typed (may be empty when they only attached files).
     `is_guest`: the visitor is not logged in, so the turn is counted against their free allowance.
@@ -253,9 +254,10 @@ async def stream_chat(
                 yield sse("status", {"text": text})
             else:
                 files.append(item)
+        if hosted_images:
+            files.extend(hosted_images)
         if files:
-            await asyncio.to_thread(attachments.save, conv["session_id"], conv["id"], files)
-            files_on_disk = True
+            files_on_disk = await asyncio.to_thread(attachments.save, conv["session_id"], conv["id"], files)
 
         images = [a for a in files if a.kind == "image"]
         # what the model is asked: attached files without a typed question get a sensible default
@@ -385,6 +387,8 @@ async def stream_chat(
                 _logger.exception("could not save the partial answer")
         if files_on_disk and not saved:
             attachments.discard(conv["session_id"], conv["id"], files)  # the turn was never stored
+        if hosted_images and not saved:
+            attachments.release_hosted(hosted_images)
         if generated and not saved:
             for meta in generated:
                 attachments.discard_generated(conv["session_id"], conv["id"], meta["id"])

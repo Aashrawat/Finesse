@@ -12,6 +12,7 @@ const ACCEPT_FILES = ".pdf,.txt,.md,.docx,application/pdf";
 const DOC_EXT = /\.(pdf|txt|md|docx)$/i;
 // keep these in step with KB_MAX_ATTACH_MB / KB_MAX_ATTACH_FILES / KB_MAX_ATTACH_IMAGES on the server
 const MAX_FILE_MB = 25;
+const MAX_IMAGE_MB = 10; // Cloudinary image limit; documents can be larger
 const MAX_FILES = 6;
 const MAX_IMAGES = 4;
 
@@ -129,6 +130,8 @@ export default function Composer({ streaming, onSend, onStop, focusKey, guestFil
       const image = isImageFile(file);
       if (!image && !DOC_EXT.test(file.name)) {
         rejected.push(`${file.name}: attach a PDF, image, TXT, MD or DOCX file`);
+      } else if (image && file.size > MAX_IMAGE_MB * 1024 * 1024) {
+        rejected.push(`${file.name}: images must be ${MAX_IMAGE_MB} MB or smaller`);
       } else if (file.size > MAX_FILE_MB * 1024 * 1024) {
         rejected.push(`${file.name}: larger than ${MAX_FILE_MB} MB`);
       } else if (guestFilesLeft !== undefined && next.length >= guestFilesLeft) {

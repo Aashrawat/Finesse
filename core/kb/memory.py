@@ -9,7 +9,9 @@ A conversation looks like:
      summary,            # running summary of the older turns
      summarized_upto,    # messages[:summarized_upto] are folded into `summary`
      messages: [{id, role, content, sources, created_at, stopped,
-                 attachments?: [{id, name, kind, mime, size}]}]}   # files live in <session>/<conversation id>/
+                 attachments?: [{id, name, kind, mime, size, url?, public_id?}]}]}
+                 # images: Cloudinary url + public_id on this document; the file is not stored
+                 # documents: text lives in <session>/<conversation id>/
 """
 
 import json

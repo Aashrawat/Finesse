@@ -1,18 +1,19 @@
 """Files attached to a chat message (the ChatGPT / Claude way). Nothing here touches the knowledge base.
 
 When a message is sent with files:
-  * images   -> downscaled JPEG, shown to the vision-capable chat model together with the question
+  * images   -> hosted on Cloudinary; the conversation document stores the URL and public id, not the file
   * documents (PDF / DOCX / TXT / MD) -> read into text (scanned PDF pages go through GPT vision OCR)
 
-Files belong to the conversation: they are stored next to it (`<chats>/<session>/<conversation id>/`) and stay
-available for follow-up questions. Documents that fit in `ATTACH_FULL_TOKENS` are sent whole; longer ones are
-chunked and embedded once, and each question only gets its best passages.
+Documents are stored next to the conversation (`<chats>/<session>/<conversation id>/`) and stay available for
+follow-up questions. Documents that fit in `ATTACH_FULL_TOKENS` are sent whole; longer ones are chunked and
+embedded once, and each question only gets its best passages.
 """
 
 import asyncio
 import base64
 import json
 import os
+import urllib.request
 import re
 import tempfile
 import uuid
@@ -49,11 +50,18 @@ class Attachment:
     kind: str  # "image" | "document"
     mime: str
     size: int
-    jpeg: bytes = b""  # images: the prepared JPEG
+    jpeg: bytes = b""  # images prepared in memory for this turn; not written to disk when a Cloudinary url is set
     pages: list[tuple[int, str]] = field(default_factory=list)  # documents: (page, text), page 0 = no pages
+    url: str = ""  # Cloudinary secure URL (images)
+    public_id: str = ""  # Cloudinary public id (images)
 
     def meta(self) -> dict[str, Any]:
-        return {"id": self.id, "name": self.name, "kind": self.kind, "mime": self.mime, "size": self.size}
+        data = {"id": self.id, "name": self.name, "kind": self.kind, "mime": self.mime, "size": self.size}
+        if self.url:
+            data["url"] = self.url
+        if self.public_id:
+            data["public_id"] = self.public_id
+        return data
 
 
 # --------------------------------------------------------------------------- reading uploads
@@ -129,16 +137,52 @@ def _path(session_id: str, conversation_id: str, att_id: str, suffix: str) -> Pa
     return conversation_dir(session_id, conversation_id) / f"{att_id}{suffix}"
 
 
-def save(session_id: str, conversation_id: str, items: list[Attachment]) -> None:
-    folder = conversation_dir(session_id, conversation_id)
-    folder.mkdir(parents=True, exist_ok=True)
+def save(session_id: str, conversation_id: str, items: list[Attachment]) -> bool:
+    """Write document text beside the conversation. Images with a Cloudinary url are not saved as files.
+    Returns True when a file was written."""
+    wrote = False
+    folder_ready = False
+
+    def ensure() -> None:
+        nonlocal folder_ready
+        if not folder_ready:
+            conversation_dir(session_id, conversation_id).mkdir(parents=True, exist_ok=True)
+            folder_ready = True
+
     for a in items:
         if a.kind == "image":
+            if a.url:
+                continue
+            ensure()
             _path(session_id, conversation_id, a.id, ".jpg").write_bytes(a.jpeg)
+            wrote = True
         else:
+            ensure()
             _path(session_id, conversation_id, a.id, ".doc.json").write_text(
                 json.dumps(a.pages, ensure_ascii=False), encoding="utf-8"
             )
+            wrote = True
+    return wrote
+
+
+def release_hosted(items: list[Attachment]) -> None:
+    """Remove Cloudinary images for a turn that was never stored on the conversation."""
+    ids = [a.public_id for a in items if a.public_id]
+    if not ids:
+        return
+    port = os.getenv("UPLOAD_PORT", "3001")
+    url = os.getenv("UPLOAD_SERVICE_URL", f"http://127.0.0.1:{port}").rstrip("/") + "/api/upload/delete"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps({"public_ids": ids}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            resp.read()
+    except Exception:
+        pass
 
 
 def discard(session_id: str, conversation_id: str, items: list[Attachment]) -> None:
@@ -201,6 +245,13 @@ def image_part(jpeg: bytes) -> dict[str, Any]:
     return {"type": "image_url", "image_url": {"url": _data_url(jpeg), "detail": "auto"}}
 
 
+def image_content(attachment: Attachment) -> dict[str, Any]:
+    """A vision part. Hosted images are sent as their Cloudinary URL; no file is read from disk."""
+    if attachment.url:
+        return {"type": "image_url", "image_url": {"url": attachment.url, "detail": "auto"}}
+    return image_part(attachment.jpeg)
+
+
 def history_messages(conv: dict[str, Any], resend_images: bool = True, plan=None) -> list[dict[str, Any]]:
     """Recent turns as chat messages. Earlier attachments stay in context: their names are noted, and the
     latest few images are shown again so follow-up questions about them work. Pass resend_images=False when
@@ -222,10 +273,14 @@ def history_messages(conv: dict[str, Any], resend_images: bool = True, plan=None
         text = f"{note}\n{m['content']}".strip()
         parts: list[dict[str, Any]] = [{"type": "text", "text": text}]
         for a in atts:
-            if a["id"] in resend:
-                path = image_path(conv["session_id"], conv["id"], a["id"])
-                if path:
-                    parts.append(image_part(path.read_bytes()))
+            if a["id"] not in resend:
+                continue
+            if a.get("url"):
+                parts.append({"type": "image_url", "image_url": {"url": a["url"], "detail": "auto"}})
+                continue
+            path = image_path(conv["session_id"], conv["id"], a["id"])
+            if path:
+                parts.append(image_part(path.read_bytes()))
         out.append({"role": "user", "content": parts if len(parts) > 1 else text})
     return out
 

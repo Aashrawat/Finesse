@@ -109,6 +109,8 @@ export interface KbAttachment {
   mime: string;
   size: number;
   previewUrl?: string; // client-side only: a local preview for the message that was just sent
+  url?: string; // Cloudinary URL stored on the conversation (images)
+  public_id?: string; // Cloudinary public id stored on the conversation (images)
 }
 
 /** A picture the chatbot generated for an answer. */

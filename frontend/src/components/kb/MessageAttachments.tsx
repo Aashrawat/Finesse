@@ -11,11 +11,11 @@ export const fileLabel = (a: { name: string; mime: string }) =>
 
 /** The image for a sent message: the local preview if we just sent it, else fetched from the server. */
 export function useImageUrl(conversationId: string | undefined, a: KbAttachment): string | null {
-  const [url, setUrl] = useState<string | null>(a.previewUrl ?? null);
+  const [url, setUrl] = useState<string | null>(a.previewUrl ?? a.url ?? null);
 
   useEffect(() => {
-    if (a.previewUrl) {
-      setUrl(a.previewUrl);
+    if (a.previewUrl || a.url) {
+      setUrl(a.previewUrl || a.url || null);
       return;
     }
     if (!conversationId) return;
@@ -33,7 +33,7 @@ export function useImageUrl(conversationId: string | undefined, a: KbAttachment)
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [conversationId, a.id, a.previewUrl]);
+  }, [conversationId, a.id, a.previewUrl, a.url]);
 
   return url;
 }

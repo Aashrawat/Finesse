@@ -115,19 +115,36 @@ export default function KbChat() {
   // ---- sending ------------------------------------------------------------------------------
   async function send(text: string, files: File[]) {
     if (streaming) return;
+    const images = files.filter((f) => f.type.startsWith("image/"));
+    const documents = files.filter((f) => !f.type.startsWith("image/"));
+    let hosted: Awaited<ReturnType<typeof kbApi.uploadImages>> = [];
+    try {
+      if (images.length) hosted = await kbApi.uploadImages(images);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't upload the image.");
+      return;
+    }
+
     const assistantId = uid();
     const patch = (update: (m: KbMessage) => KbMessage) =>
       setMessages((all) => all.map((m) => (m.id === assistantId ? update(m) : m)));
 
-    // Show the files in the message right away (local previews); the server reads them once it receives them
-    const attachments: KbAttachment[] = files.map((f) => ({
-      id: uid(),
-      name: f.name,
-      kind: f.type.startsWith("image/") ? "image" : "document",
-      mime: f.type,
-      size: f.size,
-      previewUrl: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined,
-    }));
+    // Photos are already on Cloudinary. Show a local preview now; the conversation keeps the URL and public id.
+    let imageIndex = 0;
+    const attachments: KbAttachment[] = files.map((f) => {
+      const isImage = f.type.startsWith("image/");
+      const uploaded = isImage ? hosted[imageIndex++] : undefined;
+      return {
+        id: uid(),
+        name: f.name,
+        kind: isImage ? "image" : "document",
+        mime: f.type || uploaded?.mime || "",
+        size: f.size,
+        previewUrl: isImage ? URL.createObjectURL(f) : undefined,
+        url: uploaded?.url,
+        public_id: uploaded?.public_id,
+      };
+    });
 
     setMessages((all) => [
       ...all,
@@ -153,7 +170,7 @@ export default function KbChat() {
 
     try {
       await streamChat(
-        { message: text, conversation_id: id, files },
+        { message: text, conversation_id: id, files: documents, images: hosted },
         {
           onStatus: (status) => patch((m) => ({ ...m, status })),
           onImage: (image) => patch((m) => ({ ...m, images: [...(m.images ?? []), image] })),

@@ -44,6 +44,22 @@ export const kbApi = {
     request<{ ok: boolean }>(`/api/conversations/${id}`, withSession({ method: "DELETE" })),
   documents: () => request<KbDocuments>("/api/documents"),
   quota: () => request<ChatQuota>("/api/chat/quota", withSession()),
+  /** Send photos to Cloudinary. The response is the URL and public id — the file is not kept on the server. */
+  uploadImages: async (files: File[]): Promise<UploadedImage[]> => {
+    const form = new FormData();
+    files.forEach((file) => form.append("images", file));
+    const res = await fetch("/api/upload", withSession({ method: "POST", body: form }));
+    let body: { images?: UploadedImage[]; error?: string; detail?: string } = {};
+    try {
+      body = await res.json();
+    } catch {
+      /* no JSON body */
+    }
+    if (!res.ok || !body.images || body.images.length !== files.length) {
+      throw new Error(body.error || (typeof body.detail === "string" ? body.detail : "Couldn't upload the image."));
+    }
+    return body.images;
+  },
   /** An image attached in a conversation. The session header can't go on an <img src>, so fetch it as a blob. */
   attachmentBlob: async (conversationId: string, attachmentId: string): Promise<Blob> => {
     const res = await fetch(`/api/conversations/${conversationId}/attachments/${attachmentId}`, withSession());
@@ -88,15 +104,38 @@ export interface StreamHandlers {
   onError?: (message: string) => void;
 }
 
+export interface UploadedImage {
+  url: string;
+  public_id: string;
+  bytes: number;
+  format?: string;
+  mime: string;
+  original_name: string;
+}
+
 export async function streamChat(
-  body: { message: string; conversation_id?: string; files?: File[] },
+  body: { message: string; conversation_id?: string; files?: File[]; images?: UploadedImage[] },
   handlers: StreamHandlers,
   signal: AbortSignal,
 ): Promise<void> {
-  // multipart, so files travel with the question (the browser sets the Content-Type and boundary itself)
+  // Documents travel with the question. Images are already on Cloudinary; only the link is sent.
   const form = new FormData();
   form.append("message", body.message);
   if (body.conversation_id) form.append("conversation_id", body.conversation_id);
+  if (body.images?.length) {
+    form.append(
+      "cloud_images",
+      JSON.stringify(
+        body.images.map((img) => ({
+          name: img.original_name,
+          url: img.url,
+          public_id: img.public_id,
+          mime: img.mime,
+          size: img.bytes,
+        })),
+      ),
+    );
+  }
   body.files?.forEach((f) => form.append("files", f));
 
   let res: Response;
