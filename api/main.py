@@ -6,9 +6,10 @@ import shutil
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+import requests as http_requests
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from api.auth import router as auth_router
@@ -131,6 +132,38 @@ def chat(video_id: str, body: ChatRequest):
     return {"answer": get_chain(video_id).invoke(question)}
 
 
+def _firebase_auth_host() -> str:
+    return (os.getenv("FIREBASE_AUTH_DOMAIN") or os.getenv("VITE_FIREBASE_AUTH_DOMAIN") or "").strip()
+
+
+# Google returns here. We serve Firebase's helper on this same host so the tab is not stuck
+# on a blank firebaseapp.com page.
+@app.api_route("/__/{rest:path}", methods=["GET", "POST", "HEAD", "OPTIONS"], include_in_schema=False)
+async def firebase_auth_helper(rest: str, request: Request):
+    host = _firebase_auth_host()
+    if not host:
+        raise HTTPException(status_code=404, detail="Not found")
+    url = f"https://{host}/__/{rest}"
+    query = request.url.query
+    if query:
+        url = f"{url}?{query}"
+    skip = {"host", "content-length", "content-encoding", "transfer-encoding", "connection"}
+    headers = {key: value for key, value in request.headers.items() if key.lower() not in skip}
+    try:
+        forwarded = http_requests.request(
+            request.method,
+            url,
+            headers=headers,
+            data=await request.body(),
+            timeout=20,
+            allow_redirects=False,
+        )
+    except http_requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail="Google sign-in isn't available right now.") from exc
+    out = {key: value for key, value in forwarded.headers.items() if key.lower() not in skip}
+    return Response(content=forwarded.content, status_code=forwarded.status_code, headers=out)
+
+
 # ---- Frontend (production): serve the built React app from the same origin as /api ----------
 
 DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
@@ -139,7 +172,7 @@ if (DIST_DIR / "index.html").is_file():
 
     @app.get("/{path:path}", include_in_schema=False)
     def frontend(path: str):
-        if path == "api" or path.startswith("api/"):
+        if path == "api" or path.startswith("api/") or path == "__" or path.startswith("__/"):
             raise HTTPException(status_code=404, detail="Not found")
         candidate = (DIST_DIR / path).resolve()
         if path and candidate.is_file() and DIST_DIR.resolve() in candidate.parents:

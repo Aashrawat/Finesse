@@ -15,7 +15,7 @@ function Separator() {
 }
 
 /**
- * Bottom of every left sidebar. Logged out: "Log in" and "Sign up". Logged in: your name and plan,
+ * Bottom of every left sidebar. Logged out: "Log in". Logged in: your name and plan,
  * which opens the account menu.
  */
 export default function AccountMenu() {
@@ -88,24 +88,14 @@ export default function AccountMenu() {
   if (!user) {
     return (
       <div className="shrink-0 border-t border-line pt-3" data-testid="account-guest">
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => openAuth("login")}
-            data-testid="account-login"
-            className="h-10 rounded-row border border-line text-sm font-semibold text-ink transition-colors duration-150 hover:border-lime/60 hover:bg-lime/[0.06]"
-          >
-            Log in
-          </button>
-          <button
-            type="button"
-            onClick={() => openAuth("signup")}
-            data-testid="account-signup"
-            className="h-10 rounded-row bg-lime text-sm font-bold text-on-accent transition-shadow duration-150 hover:shadow-[0_0_20px_color-mix(in_srgb,var(--color-lime)_30%,transparent)]"
-          >
-            Sign up
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => openAuth("login")}
+          data-testid="account-login"
+          className="h-10 w-full rounded-row bg-lime text-sm font-bold text-on-accent transition-shadow duration-150 hover:shadow-[0_0_20px_color-mix(in_srgb,var(--color-lime)_30%,transparent)]"
+        >
+          Log in
+        </button>
         <button
           type="button"
           onClick={openSettings}

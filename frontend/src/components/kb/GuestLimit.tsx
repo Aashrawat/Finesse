@@ -27,14 +27,6 @@ export function LoginWall() {
           >
             Log in
           </button>
-          <button
-            type="button"
-            onClick={() => openAuth("signup")}
-            data-testid="kb-wall-signup"
-            className="h-10 rounded-row border border-line px-4 text-sm text-ink hover:bg-panel-hover"
-          >
-            Sign up
-          </button>
         </div>
       </div>
     </div>

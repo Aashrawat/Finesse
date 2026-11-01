@@ -44,7 +44,7 @@ function PlanCard({
 
   let action: Action;
   if (isCurrent) action = { label: "Your current plan", disabled: true };
-  else if (current === null) action = { label: paid ? `Sign up for ${plan.name}` : "Get started free", disabled: false };
+  else if (current === null) action = { label: paid ? `Get ${plan.name}` : "Get started free", disabled: false };
   else if (billing) {
     action = paid
       ? { label: current === "free" ? `Subscribe to ${plan.name}` : `Switch to ${plan.name}`, disabled: false }
@@ -226,7 +226,7 @@ export default function Pricing() {
   }, [returned, loading]);
 
   function choose(plan: PlanInfo) {
-    if (!user) return openAuth("signup");
+    if (!user) return openAuth("login");
     if (data?.billing_enabled) {
       if (plan.price === 0) portal.mutate(); // going back to Free means cancelling in Stripe's portal
       else checkout.mutate(plan.id);

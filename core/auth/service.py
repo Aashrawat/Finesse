@@ -188,12 +188,15 @@ def create_user(name: str, email: str, password: str) -> dict:
         doc["_id"] = users.insert_one(doc).inserted_id
     except DuplicateKeyError:
         existing = users.find_one({"email": doc["email"]})
+        google = bool(existing) and (existing.get("auth_provider") == "google" or not existing.get("password_hash"))
+        if google:
+            raise AuthError(409, "This account already exists. Please log in.")
         if existing is not None and not existing.get("email_verified", True):
             # Signed up before but never confirmed the email: let them start over (new name and password),
             # so an abandoned sign-up can't lock the address.
             fields = {"name": doc["name"], "password_hash": doc["password_hash"]}
             return users.find_one_and_update({"_id": existing["_id"]}, {"$set": fields}, return_document=True)
-        raise AuthError(409, "An account with that email already exists. Try logging in.")
+        raise AuthError(409, "This account already exists. Please log in.")
     return doc
 
 
@@ -291,9 +294,56 @@ def authenticate(email: str, password: str) -> dict:
     if user is None:
         _burn_time(password or "")
         raise wrong
+    if not user.get("password_hash"):
+        raise AuthError(401, "This account uses Google. Click Continue with Google.")
     if not verify_password(password or "", user["password_hash"]):
         raise wrong
     return user
+
+
+def login_with_google(claims: dict) -> tuple[dict, bool]:
+    """Find or create the Finesse account for a Google sign-in. New accounts still need the emailed code.
+
+    Returns (user, created). `created` is True only when this Google click made a new account.
+    """
+    address = clean_email(claims["email"])
+    raw_name = (claims.get("name") or "").strip() or address.split("@")[0]
+    name = clean_name(raw_name)
+    uid = str(claims.get("sub") or claims.get("user_id") or "")
+    users = get_db().users
+    existing = users.find_one({"email": address})
+    admin = address in ADMIN_EMAILS
+    if existing is None:
+        doc = {
+            "name": name,
+            "email": address,
+            "password_hash": None,
+            "plan": "premium" if admin else "free",
+            "role": "admin" if admin else "user",
+            "email_verified": admin,
+            "auth_provider": "google",
+            "firebase_uid": uid,
+            "subscription": {"plan": "free", "status": "inactive"},
+            "created_at": _now(),
+        }
+        doc["_id"] = users.insert_one(doc).inserted_id
+        return apply_admin(doc), True
+    fields = {
+        "auth_provider": existing.get("auth_provider") or "google",
+        "firebase_uid": uid or existing.get("firebase_uid"),
+    }
+    if admin:
+        fields["email_verified"] = True
+    users.update_one({"_id": existing["_id"]}, {"$set": fields})
+    existing.update(fields)
+    return apply_admin(existing), False
+
+
+def google_needs_code(user: dict) -> bool:
+    """New Google accounts (and any still-unconfirmed mailbox) enter the emailed code before login."""
+    if is_admin(user):
+        return False
+    return not user.get("email_verified", False)
 
 
 def update_name(user_id: str, name: str) -> dict:

@@ -38,7 +38,7 @@ interface RawVideo extends RawListItem {
 export async function request<T>(url: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(url, init);
+    res = await fetch(url, { credentials: "include", ...init });
   } catch {
     throw new Error("Can't reach the server. Is the backend running?");
   }

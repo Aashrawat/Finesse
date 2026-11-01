@@ -13,8 +13,17 @@ const json = (method: string, body: unknown): RequestInit => ({
 /** Sign-up (and logging in with an unconfirmed email) doesn't log anyone in: a 6-digit code is emailed first. */
 export type AuthResult = { user: AuthUser } | { verification_required: true; email: string };
 
+export type FirebaseWebConfig = {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  appId: string;
+};
+
 export const authApi = {
   me: () => request<{ user: AuthUser | null }>("/api/auth/me"),
+  firebase: () => request<{ enabled: boolean; config: FirebaseWebConfig | null }>("/api/auth/firebase"),
+  google: (id_token: string) => request<{ user: AuthUser }>("/api/auth/google", json("POST", { id_token })),
   signup: (body: { name: string; email: string; password: string }) =>
     request<AuthResult>("/api/auth/signup", json("POST", body)),
   login: (body: { email: string; password: string }) => request<AuthResult>("/api/auth/login", json("POST", body)),

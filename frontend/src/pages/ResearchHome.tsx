@@ -72,10 +72,10 @@ export default function ResearchHome() {
                 {!user ? (
                   <button
                     type="button"
-                    onClick={() => openAuth("signup")}
+                    onClick={() => openAuth("login")}
                     className="inline-flex h-11 items-center rounded-row bg-lime px-5 font-heading text-sm font-bold text-on-accent"
                   >
-                    Sign up
+                    Log in
                   </button>
                 ) : (
                   <button
