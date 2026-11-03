@@ -1,13 +1,3 @@
-"""Files attached to a chat message (the ChatGPT / Claude way). Nothing here touches the knowledge base.
-
-When a message is sent with files:
-  * images   -> hosted on Cloudinary; the conversation document stores the URL and public id, not the file
-  * documents (PDF / DOCX / TXT / MD) -> read into text (scanned PDF pages go through GPT vision OCR)
-
-Documents are stored next to the conversation (`<chats>/<session>/<conversation id>/`) and stay available for
-follow-up questions. Documents that fit in `ATTACH_FULL_TOKENS` are sent whole; longer ones are chunked and
-embedded once, and each question only gets its best passages.
-"""
 
 import asyncio
 import base64
