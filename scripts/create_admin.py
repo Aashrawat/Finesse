@@ -1,8 +1,4 @@
-"""Create or upgrade the admin account. Pass ADMIN_EMAIL and ADMIN_PASSWORD in the environment.
 
-Never commit a password. Example:
-    ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=... python scripts/create_admin.py
-"""
 import os
 import sys
 from pathlib import Path
