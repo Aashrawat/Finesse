@@ -1,15 +1,3 @@
-"""The chat turn: read attached files -> memory -> rewrite -> retrieve -> prompt -> stream -> sources -> save -> log.
-
-With attached files the answer comes from them (see core.kb.attachments) and the knowledge base is not searched.
-
-`stream_chat` is an async generator of Server-Sent Events:
-    meta     {conversation_id, title}
-    status   {text}                   (while attached files are being read)
-    token    {t}                      (many)
-    sources  {sources: [...]}         (after the last token)
-    done     {latency_ms, ttft_ms, usage}
-    error    {message}
-"""
 
 import asyncio
 import json
