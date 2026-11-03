@@ -1,19 +1,3 @@
-﻿"""Sending email. Three providers; the first one that is configured in .env is used:
-
-0. Brevo (BREVO_API_KEY, EMAIL_FROM=`Finesse AI <you@gmail.com>` where that address is a verified sender in Brevo).
-   Sends over HTTPS (port 443), so it works on hosts that block SMTP ports (Hugging Face Spaces) and reaches any
-   recipient without a domain of your own. The free plan allows about 300 emails a day.
-1. SMTP (SMTP_HOST, SMTP_USER, SMTP_PASSWORD, optional SMTP_PORT=587 and EMAIL_FROM). Works for any recipient and
-   needs no domain of your own. For example Gmail: SMTP_HOST=smtp.gmail.com, SMTP_USER=you@gmail.com and
-   SMTP_PASSWORD=<an App Password> (Google account -> Security -> 2-Step Verification -> App passwords).
-   Gmail allows roughly 500 emails a day.
-2. Resend (RESEND_API_KEY, EMAIL_FROM=`Finesse AI <verify@yourdomain.com>`). To reach everyone, the domain must be
-   verified in Resend (add its SPF, DKIM and DMARC records). Without one, Resend's test sender
-   `onboarding@resend.dev` only delivers to the email address of your own Resend account.
-
-With neither configured nothing is sent: the email is printed in the backend's console instead, so sign-up can be
-tried locally. Every email, sent or not, is recorded in the `email_log` collection (never the text of the email).
-"""
 
 import asyncio
 import logging
