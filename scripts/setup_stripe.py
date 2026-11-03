@@ -1,8 +1,4 @@
-"""Create the Pro and Premium Stripe prices, and the webhook the live Space needs.
 
-Reads STRIPE_SECRET_KEY from .env. Writes missing STRIPE_PRICE_* / STRIPE_WEBHOOK_SECRET / APP_URL
-back into .env. Never prints secret values.
-"""
 from pathlib import Path
 
 from dotenv import dotenv_values
