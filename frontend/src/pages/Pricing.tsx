@@ -10,7 +10,6 @@ import type { AuthUser, PlanInfo } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const POPULAR = "pro";
-const RANK = ["free", "pro", "premium"];
 
 const priceLabel = (p: PlanInfo) => (p.price === 0 ? "$0" : `$${p.price.toFixed(2)}`);
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -75,8 +74,8 @@ function PlanCard({
 
       <dl className="mt-5 space-y-1.5 rounded-row bg-track p-3 font-mono text-[12px] text-ink-muted">
         <div className="flex justify-between gap-3">
-          <dt>AI model</dt>
-          <dd className="text-ink">{plan.model}</dd>
+          <dt>AI models</dt>
+          <dd className="text-ink">{plan.id === "pro" ? "Choose your GPT" : plan.model}</dd>
         </div>
         <div className="flex justify-between gap-3">
           <dt>Messages / day</dt>
@@ -242,14 +241,14 @@ export default function Pricing() {
   return (
     <StudioShell>
       <main className="flex-1 px-4 py-10 md:px-8 lg:py-14" data-testid="pricing-page">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-4xl">
           <section className="animate-rise text-center">
             <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink-muted">Plans</p>
             <h1 className="mt-4 text-4xl leading-tight md:text-6xl">
               Pick the plan that <span className="text-lime">fits you</span>
             </h1>
             <p className="mx-auto mt-4 max-w-xl text-base text-ink-muted">
-              Pro adds spoken replies and longer conversations. Premium adds the research agent and even more memory.
+              Start with Free. Choose Pro for smarter GPT models, spoken replies, research, and longer conversations.
             </p>
             {subscribed && (
               <button
@@ -268,8 +267,8 @@ export default function Pricing() {
           {user && <SubscriptionBanner user={user} onManage={() => portal.mutate()} busy={portal.isPending} />}
 
           {isPending && (
-            <div className="mt-12 grid gap-5 md:grid-cols-3" aria-label="Loading plans">
-              {[0, 1, 2].map((i) => <div key={i} className="h-[520px] animate-pulse rounded-panel bg-panel" />)}
+            <div className="mt-12 grid gap-5 md:grid-cols-2" aria-label="Loading plans">
+              {[0, 1].map((i) => <div key={i} className="h-[520px] animate-pulse rounded-panel bg-panel" />)}
             </div>
           )}
 
@@ -281,7 +280,7 @@ export default function Pricing() {
 
           {data && (
             <>
-              <div className="mt-12 grid items-stretch gap-5 md:grid-cols-3">
+              <div className="mt-12 grid items-stretch gap-5 md:grid-cols-2">
                 {data.plans.map((plan) => (
                   <PlanCard
                     key={plan.id}

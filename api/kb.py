@@ -1,5 +1,3 @@
-
-
 import asyncio
 import json
 import os
@@ -12,17 +10,16 @@ from fastapi import APIRouter, File, Form, Header, HTTPException, Request, Uploa
 from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
-from core.kb import attachments, config, guest, memory, plans, store
+from core.kb import attachments, config, guest, memory, plans
 from core.kb.attachments import Attachment, Upload
 from core.kb.chat import stream_chat
-from core.kb.ingest import IngestBusy, ingest_folder, scan
+from core.agent.security import actor_for_user, can_read_conversation
 from api.auth import current_user
 from api.ratelimit import RateLimiter
 
-router = APIRouter(prefix="/api", tags=["knowledge-base"])
+router = APIRouter(prefix="/api", tags=["chat"])
 
 _chat_limiter = RateLimiter(config.CHAT_RATE_LIMIT)
-_ingest_limiter = RateLimiter(config.INGEST_RATE_LIMIT)
 
 
 def _session(x_session_id: str | None) -> str:
@@ -39,31 +36,25 @@ class IngestRequest(BaseModel):
 
 @router.post("/ingest")
 def ingest(body: IngestRequest | None = None, x_session_id: str | None = Header(None)):
-    session = _session(x_session_id)
-    _ingest_limiter.check(session)
-    try:
-        return ingest_folder(force=bool(body and body.force), log=lambda _msg: None)
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=404,
-            detail=f"The documents folder '{config.DOCS_DIR}' doesn't exist. Create it and add PDF, image, TXT, MD or DOCX files.",
-        )
-    except IngestBusy as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-    except RuntimeError as exc:  # e.g. missing OPENAI_API_KEY
-        raise HTTPException(status_code=400, detail=str(exc))
+    """Retained for older clients; the app no longer writes a shared document index."""
+    _session(x_session_id)
+    raise HTTPException(
+        status_code=410,
+        detail="Shared knowledge-base storage is disabled. Attach files to an individual chat instead.",
+    )
 
 
 @router.get("/documents")
 def documents():
-    status = scan()
+    """Report the disabled library without opening or scanning the old index."""
     return {
-        "folder": status["folder"],
-        "folder_exists": status["exists"],
-        "documents": store.list_documents(),
-        "pending": status["pending"],
-        "failed": status["failed"],
-        "total_chunks": store.count(),
+        "enabled": False,
+        "folder": "",
+        "folder_exists": False,
+        "documents": [],
+        "pending": [],
+        "failed": [],
+        "total_chunks": 0,
     }
 
 
@@ -183,7 +174,8 @@ async def chat_quota(request: Request, x_session_id: str | None = Header(None)):
     session = _session(x_session_id)
     user = await _account(request)
     if user is None:
-        return {"guest": True, **guest.status(session)}
+        plan = plans.for_user(None)
+        return {"guest": True, **guest.status(session), "model": plan.chat_model, "models": plans.model_options(plan)}
     return {"guest": False, **plans.status(str(user["_id"]), plans.for_user(user))}
 
 
@@ -220,6 +212,7 @@ async def chat(
     message: str = Form(""),
     conversation_id: str | None = Form(None),
     cloud_images: str = Form(""),
+    model: str | None = Form(None, max_length=120),
     files: list[UploadFile] = File(default=[]),
     x_session_id: str | None = Header(None),
 ):
@@ -237,6 +230,10 @@ async def chat(
     is_guest = user is None
     user_id = str(user["_id"]) if user else None
     plan = plans.for_user(user)
+    try:
+        chosen_model = plans.select_model(plan, model)
+    except plans.ModelSelectionError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
     if is_guest:
         reason = guest.check(session, len(files) + len(hosted))
         if reason:
@@ -253,13 +250,15 @@ async def chat(
         conv = await asyncio.to_thread(memory.store.get, session, conversation_id)
         if conv is None:
             raise HTTPException(status_code=404, detail="Conversation not found.")
+        if not can_read_conversation(conv, user):
+            raise HTTPException(status_code=403, detail="This conversation contains private data and is available only to its authorized owner.")
     else:
         label = message or (uploads[0].name if uploads else hosted[0].name)
         title = label.replace("\n", " ")[:60]
         conv = memory.new_conversation(session, title)
 
     return StreamingResponse(
-        stream_chat(conv, message, uploads, is_guest, plan, user_id, hosted),
+        stream_chat(conv, message, uploads, is_guest, plan, user_id, hosted, model=chosen_model, actor=actor_for_user(user)),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
     )
@@ -268,23 +267,35 @@ async def chat(
 # ---- conversations ------------------------------------------------------------------------
 
 @router.get("/conversations")
-def list_conversations(x_session_id: str | None = Header(None)):
-    return memory.store.list(_session(x_session_id))
+def list_conversations(request: Request, x_session_id: str | None = Header(None)):
+    items = memory.store.list(_session(x_session_id))
+    user = current_user(request) if any(item.get("private_owner") for item in items) else None
+    return [{k: item[k] for k in ("id", "title", "created_at", "updated_at")} for item in items if can_read_conversation(item, user)]
+
+
+def _authorize_conversation(conv: dict | None, request: Request) -> None:
+    if conv and conv.get("private_owner") and not can_read_conversation(conv, current_user(request)):
+        raise HTTPException(status_code=403, detail="This conversation contains private data and is available only to its authorized owner.")
 
 
 @router.get("/conversations/{conversation_id}")
-def get_conversation(conversation_id: str, x_session_id: str | None = Header(None)):
+def get_conversation(conversation_id: str, request: Request, x_session_id: str | None = Header(None)):
     conv = memory.store.get(_session(x_session_id), conversation_id)
     if conv is None:
         raise HTTPException(status_code=404, detail="Conversation not found.")
-    return {k: conv[k] for k in ("id", "title", "created_at", "updated_at", "messages")}
+    _authorize_conversation(conv, request)
+    return {
+        **{k: conv[k] for k in ("id", "title", "created_at", "updated_at")},
+        "messages": attachments.public_messages(conv),
+    }
 
 
 @router.get("/conversations/{conversation_id}/attachments/{attachment_id}")
-def get_attachment(conversation_id: str, attachment_id: str, x_session_id: str | None = Header(None)):
+def get_attachment(conversation_id: str, attachment_id: str, request: Request, x_session_id: str | None = Header(None)):
     """An image attached in this conversation (used for the thumbnails in the message list)."""
     session = _session(x_session_id)
     conv = memory.store.get(session, conversation_id)
+    _authorize_conversation(conv, request)
     hosted_url = ""
     known = False
     if conv:
@@ -305,9 +316,10 @@ def get_attachment(conversation_id: str, attachment_id: str, x_session_id: str |
 
 
 @router.delete("/conversations/{conversation_id}")
-def delete_conversation(conversation_id: str, x_session_id: str | None = Header(None)):
+def delete_conversation(conversation_id: str, request: Request, x_session_id: str | None = Header(None)):
     session = _session(x_session_id)
     conv = memory.store.get(session, conversation_id)
+    _authorize_conversation(conv, request)
     if not memory.store.delete(session, conversation_id):
         raise HTTPException(status_code=404, detail="Conversation not found.")
     public_ids = [
@@ -326,11 +338,11 @@ class SpeechRequest(BaseModel):
 
 @router.post("/chat/speech")
 async def speak(body: SpeechRequest, request: Request):
-    """Read an answer aloud. Pro and Premium only; guests and Free get 403."""
+    """Read an answer aloud. Pro only; guests and Free get 403."""
     user = await _account(request)
     plan = plans.for_user(user)
     if user is None or not plan.voice_replies:
-        raise HTTPException(status_code=403, detail="Spoken replies are part of Pro and Premium.")
+        raise HTTPException(status_code=403, detail="Spoken replies are part of Pro.")
     text = (body.text or "").strip()
     if not text:
         raise HTTPException(status_code=422, detail="Nothing to read aloud.")

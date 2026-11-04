@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, PanelLeft, X } from "lucide-react";
+import { ArrowDown, ChevronRight, PanelLeft, X } from "lucide-react";
 import { toast } from "sonner";
 import StudioShell from "@/components/studio/StudioShell";
 import ConversationSidebar from "@/components/kb/ConversationSidebar";
 import MessageBubble from "@/components/kb/MessageBubble";
 import Composer from "@/components/kb/Composer";
+import ChatWelcome from "@/components/kb/ChatWelcome";
 import { GuestUsage, LoginWall, PlanLimitWall, PlanUsage } from "@/components/kb/GuestLimit";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { kbApi, streamChat } from "@/lib/kbApi";
@@ -46,6 +47,9 @@ export default function KbChat() {
   const [missing, setMissing] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showJump, setShowJump] = useState(false);
+  const [draft, setDraft] = useState<{ text: string; key: number }>();
+  const [selectedModel, setSelectedModel] = useState("");
+  const activeModel = quota?.models?.find((model) => model.id === selectedModel && model.available)?.id ?? quota?.model ?? "";
 
   const abortRef = useRef<AbortController | null>(null);
   const skipLoadFor = useRef<string | null>(null); // a conversation we just created: its messages are already on screen
@@ -92,6 +96,32 @@ export default function KbChat() {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const drawer = document.querySelector<HTMLElement>('[data-testid="kb-drawer-panel"]');
+    drawer?.querySelector<HTMLElement>("button")?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDrawerOpen(false);
+      if (event.key !== "Tab" || !drawer) return;
+      const items = Array.from(drawer.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input, [tabindex="0"]'));
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      previousFocus?.focus();
+    };
+  }, [drawerOpen]);
+
   // ---- auto-scroll -------------------------------------------------------------------------
   useEffect(() => {
     const el = scroller.current;
@@ -115,6 +145,7 @@ export default function KbChat() {
   // ---- sending ------------------------------------------------------------------------------
   async function send(text: string, files: File[]) {
     if (streaming) return;
+    const requestedModel = activeModel || undefined;
     const images = files.filter((f) => f.type.startsWith("image/"));
     const documents = files.filter((f) => !f.type.startsWith("image/"));
     let hosted: Awaited<ReturnType<typeof kbApi.uploadImages>> = [];
@@ -149,7 +180,7 @@ export default function KbChat() {
     setMessages((all) => [
       ...all,
       { id: uid(), role: "user", content: text, sources: [], created_at: new Date().toISOString(), attachments },
-      { id: assistantId, role: "assistant", content: "", sources: [], created_at: new Date().toISOString(), streaming: true },
+      { id: assistantId, role: "assistant", content: "", sources: [], created_at: new Date().toISOString(), streaming: true, model: requestedModel },
     ]);
     stick.current = true;
     setStreaming(true);
@@ -170,11 +201,12 @@ export default function KbChat() {
 
     try {
       await streamChat(
-        { message: text, conversation_id: id, files: documents, images: hosted },
+        { message: text, conversation_id: id, files: documents, images: hosted, model: requestedModel },
         {
           onStatus: (status) => patch((m) => ({ ...m, status })),
           onImage: (image) => patch((m) => ({ ...m, images: [...(m.images ?? []), image] })),
           onMeta: (meta) => {
+            if (meta.model) patch((message) => ({ ...message, model: meta.model }));
             setTitle((t) => t || meta.title);
             if (!id) {
               // First message of a new chat: move to /chat/:id without reloading what's on screen
@@ -191,6 +223,7 @@ export default function KbChat() {
             flush();
             patch((m) => ({ ...m, sources }));
           },
+          onExternalSources: (external_sources) => patch((message) => ({ ...message, external_sources })),
           onError: (message) => {
             cancelAnimationFrame(frame);
             flush();
@@ -229,14 +262,14 @@ export default function KbChat() {
     <StudioShell>
       <div className="relative flex h-[calc(100dvh-3.5rem)] min-h-0" data-testid="kb-chat">
         {/* Conversation list: fixed column on large screens, drawer on small ones */}
-        <aside className="hidden w-[300px] shrink-0 border-r border-line bg-page lg:block" aria-label="Conversations">
+        <aside className="conversation-rail hidden w-[264px] shrink-0 border-r border-line lg:block" aria-label="Conversations">
           <ConversationSidebar activeId={id} />
         </aside>
 
         {drawerOpen && (
           <div className="fixed inset-0 top-14 z-30 lg:hidden" data-testid="kb-drawer">
             <button type="button" aria-label="Close conversations" onClick={() => setDrawerOpen(false)} className="absolute inset-0 bg-black/60" />
-            <aside className="absolute inset-y-0 left-0 w-[min(320px,88vw)] border-r border-line bg-page" aria-label="Conversations">
+            <aside className="conversation-rail absolute inset-y-0 left-0 w-[min(320px,88vw)] border-r border-line pt-8" role="dialog" aria-modal="true" aria-label="Conversations" data-testid="kb-drawer-panel">
               <button
                 type="button"
                 onClick={() => setDrawerOpen(false)}
@@ -250,92 +283,97 @@ export default function KbChat() {
           </div>
         )}
 
-        <section className="relative flex min-w-0 flex-1 flex-col">
-          <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-3 md:px-5">
+        <section className="chat-canvas relative flex min-w-0 flex-1 flex-col" aria-label="Chat workspace">
+          <div className="flex h-14 shrink-0 items-center gap-2 px-3 md:px-7">
             <button
               type="button"
               onClick={() => setDrawerOpen(true)}
               aria-label="Open conversations"
+              aria-expanded={drawerOpen}
               data-testid="kb-drawer-toggle"
               className="grid size-8 place-items-center rounded-md text-ink-muted transition-colors duration-150 hover:bg-panel-hover hover:text-ink lg:hidden"
             >
               <PanelLeft className="size-4" aria-hidden />
             </button>
-            <h1 className="truncate font-heading text-base font-semibold text-ink" data-testid="kb-title">
-              {title || "New chat"}
+            <span className="hidden text-xs text-ink-faint sm:inline">Your workspace</span>
+            <ChevronRight className="hidden size-3 text-ink-faint sm:block" aria-hidden />
+            <h1 className="truncate font-body text-xs font-medium text-ink-muted" data-testid="kb-title">
+              {title || "New conversation"}
             </h1>
+            <span className="ml-auto hidden shrink-0 items-center gap-1.5 text-[11px] text-ink-faint sm:inline-flex"><span className="size-1.5 rounded-full bg-lime/70" aria-hidden /> Room to think</span>
           </div>
 
-          <div ref={scroller} onScroll={onScroll} className="studio-scroll min-h-0 flex-1 overflow-y-auto" data-testid="kb-scroll">
-            <div className="mx-auto flex min-h-full max-w-3xl flex-col px-4 py-6 md:px-6">
-              {loading && (
-                <div className="space-y-4" aria-label="Loading conversation">
-                  {[0, 1].map((i) => <div key={i} className="h-16 animate-pulse rounded-panel bg-panel" />)}
-                </div>
-              )}
+          <div className={`chat-stage flex min-h-0 flex-1 flex-col${empty && !missing ? " chat-stage-empty" : ""}`}>
+            <div ref={scroller} onScroll={onScroll} className="chat-scroller studio-scroll min-h-0 flex-1 overflow-y-auto" data-testid="kb-scroll">
+              <div className="chat-content mx-auto flex min-h-full max-w-[860px] flex-col px-5 py-6 md:px-10">
+                {loading && (
+                  <div className="space-y-4" aria-label="Loading conversation">
+                    {[0, 1].map((i) => <div key={i} className="h-16 animate-pulse rounded-panel bg-panel" />)}
+                  </div>
+                )}
 
-              {missing && (
-                <div className="m-auto text-center" data-testid="kb-missing">
-                  <h2 className="text-2xl">That chat doesn't exist</h2>
-                  <p className="mt-2 text-sm text-ink-muted">It may have been deleted, or it belongs to another browser.</p>
-                  <button
-                    type="button"
-                    onClick={() => navigate("/chat")}
-                    className="mt-4 h-10 rounded-row bg-lime px-5 font-heading text-sm font-bold text-on-accent"
-                  >
-                    Start a new chat
-                  </button>
-                </div>
-              )}
+                {missing && (
+                  <div className="m-auto text-center" data-testid="kb-missing">
+                    <h2 className="text-2xl">That chat doesn't exist</h2>
+                    <p className="mt-2 text-sm text-ink-muted">It may have been deleted, or it belongs to another browser.</p>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/chat")}
+                      className="mt-4 h-10 rounded-row bg-lime px-5 font-heading text-sm font-bold text-on-accent"
+                    >
+                      Start a new chat
+                    </button>
+                  </div>
+                )}
 
-              {empty && !missing && (
-                <div className="m-auto w-full animate-rise text-center" data-testid="kb-empty">
-                  <h2 className="text-3xl md:text-4xl">Ask anything?</h2>
-                  <p className="mt-3 text-sm text-ink-muted">
-                    Tap <span className="font-semibold text-ink">+</span> to attach a PDF, take a photo, or pick one from your gallery, then ask about it.
-                  </p>
-                </div>
-              )}
+                {empty && !missing && (
+                  <ChatWelcome onPrompt={(text) => setDraft({ text, key: Date.now() })} />
+                )}
 
-              {messages.length > 0 && (
-                <div className="space-y-6" role="log" aria-live="polite" aria-label="Conversation" data-testid="kb-messages">
-                  {messages.map((m) => (
-                    <MessageBubble key={m.id} message={m} conversationId={id} voiceReplies={!!quota?.voice_replies} />
-                  ))}
-                </div>
-              )}
+                {messages.length > 0 && (
+                  <div className="space-y-6" role="log" aria-live="polite" aria-label="Conversation" data-testid="kb-messages">
+                    {messages.map((m) => (
+                      <MessageBubble key={m.id} message={m} conversationId={id} voiceReplies={!!quota?.voice_replies} />
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
+
+            {showJump && (
+              <button
+                type="button"
+                onClick={jumpToEnd}
+                aria-label="Scroll to latest"
+                data-testid="kb-jump"
+                className="absolute bottom-28 left-1/2 z-10 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-line bg-panel text-ink shadow-lg transition-colors duration-150 hover:bg-panel-hover"
+              >
+                <ArrowDown className="size-4" aria-hidden />
+              </button>
+            )}
+
+            {guestBlocked ? (
+              <LoginWall />
+            ) : planBlocked && quota ? (
+              <PlanLimitWall quota={quota} />
+            ) : (
+              <>
+                {quota && <GuestUsage quota={quota} />}
+                {quota && <PlanUsage quota={quota} />}
+                <Composer
+                  streaming={streaming}
+                  onSend={send}
+                  onStop={stop}
+                  focusKey={`${id ?? "new"}:${fresh ?? ""}`}
+                  guestFilesLeft={guestFilesLeft}
+                  draft={draft}
+                  models={quota?.models ?? []}
+                  model={activeModel}
+                  onModelChange={setSelectedModel}
+                />
+              </>
+            )}
           </div>
-
-          {showJump && (
-            <button
-              type="button"
-              onClick={jumpToEnd}
-              aria-label="Scroll to latest"
-              data-testid="kb-jump"
-              className="absolute bottom-28 left-1/2 z-10 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-line bg-panel text-ink shadow-lg transition-colors duration-150 hover:bg-panel-hover"
-            >
-              <ArrowDown className="size-4" aria-hidden />
-            </button>
-          )}
-
-          {guestBlocked ? (
-            <LoginWall />
-          ) : planBlocked && quota ? (
-            <PlanLimitWall quota={quota} />
-          ) : (
-            <>
-              {quota && <GuestUsage quota={quota} />}
-              {quota && <PlanUsage quota={quota} />}
-              <Composer
-                streaming={streaming}
-                onSend={send}
-                onStop={stop}
-                focusKey={id ?? "new"}
-                guestFilesLeft={guestFilesLeft}
-              />
-            </>
-          )}
         </section>
       </div>
     </StudioShell>

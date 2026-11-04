@@ -7,7 +7,6 @@ Settings (.env):
     STRIPE_SECRET_KEY       sk_test_... / sk_live_...
     STRIPE_WEBHOOK_SECRET   whsec_... (Stripe Dashboard -> Developers -> Webhooks, or `stripe listen`)
     STRIPE_PRICE_PRO        price_... of the monthly Pro price
-    STRIPE_PRICE_PREMIUM    price_... of the monthly Premium price
     APP_URL                 where the site lives (Stripe sends people back here), default http://localhost:5173
 
 Webhook events to enable: checkout.session.completed, customer.subscription.created / .updated / .deleted,
@@ -55,7 +54,7 @@ def app_url() -> str:
 
 def price_ids() -> dict[str, str]:
     """{plan id: Stripe price id} for the plans that are configured."""
-    found = {"pro": _env("STRIPE_PRICE_PRO"), "premium": _env("STRIPE_PRICE_PREMIUM")}
+    found = {"pro": _env("STRIPE_PRICE_PRO")}
     return {plan: price for plan, price in found.items() if price}
 
 
@@ -63,12 +62,16 @@ def plan_for_price(price_id: str | None) -> str | None:
     for plan, price in price_ids().items():
         if price == price_id:
             return plan
+    # Recognize existing subscriptions to the retired tier without offering it for checkout.
+    legacy_price = _env("STRIPE_PRICE_PREMIUM")
+    if legacy_price and price_id == legacy_price:
+        return "pro"
     return None
 
 
 def enabled() -> bool:
-    """Payments are on when the key and both prices are set."""
-    return bool(_env("STRIPE_SECRET_KEY")) and len(price_ids()) == 2
+    """Payments are on when the key and the Pro price are set."""
+    return bool(_env("STRIPE_SECRET_KEY")) and bool(price_ids().get("pro"))
 
 
 def _stripe():
@@ -153,9 +156,9 @@ def _set(user: dict, **fields: Any) -> dict:
     """Update the user's plan and/or subscription fields; returns the updated document."""
     from core.auth import service as auth
 
-    # Admin keeps Premium even if a Stripe subscription is cancelled.
+    # Admin keeps Pro even if a Stripe subscription is cancelled.
     if "plan" in fields and auth.is_admin(user):
-        fields["plan"] = "premium"
+        fields["plan"] = "pro"
     update: dict[str, Any] = {}
     for key, value in fields.items():
         update["plan" if key == "plan" else f"subscription.{key}"] = value
@@ -325,7 +328,7 @@ def _on_subscription(sub: Any, previous: Any, event_id: str) -> None:
         _logger.warning("subscription %s has a price (%s) that isn't one of ours; ignoring", _dig(sub, "id"), price_id)
         return
     status = _dig(sub, "status", default="active")
-    old_plan = user.get("plan", "free")
+    old_plan = plans.for_user(user).id
     effective = new_plan if status in ACTIVE else "free"
     cancelling = bool(_dig(sub, "cancel_at_period_end") or _dig(sub, "cancel_at"))
     was_cancelling = bool(_dig(previous, "cancel_at_period_end") or _dig(previous, "cancel_at"))

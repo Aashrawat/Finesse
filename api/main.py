@@ -7,7 +7,7 @@ import socket
 import subprocess
 import time
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 
 import requests as http_requests
@@ -24,6 +24,9 @@ from api.plans import router as plans_router
 from api.research import router as research_router
 from api.store import delete_video_file, list_videos, load_video
 from core.vector_store import delete_vector_store
+from api.agent import router as agent_router
+from core.agent import settings as agent_settings
+from core.agent.runtime import mcp_app, mcp_server
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
 ALLOWED_EXTENSIONS = {".mp3", ".wav", ".m4a", ".mp4", ".mov", ".mkv", ".webm", ".ogg", ".flac", ".aac"}
@@ -75,7 +78,10 @@ def _start_upload_server() -> subprocess.Popen | None:
 async def _lifespan(_app: FastAPI):
     proc = _start_upload_server()
     try:
-        yield
+        async with AsyncExitStack() as stack:
+            if agent_settings.enabled():
+                await stack.enter_async_context(mcp_server.session_manager.run())
+            yield
     finally:
         if proc is not None and proc.poll() is None:
             proc.terminate()
@@ -87,8 +93,7 @@ async def _lifespan(_app: FastAPI):
 
 app = FastAPI(title="Finesse", lifespan=_lifespan)
 
-# CORS: the dev server proxies /api, so this only matters when the frontend is served from another
-# origin. Set CORS_ORIGINS="https://app.example.com,http://localhost:5173" in .env to change it.
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if o.strip()],
@@ -102,6 +107,9 @@ app.include_router(research_router)
 app.include_router(kb_router)
 app.include_router(plans_router)
 app.include_router(billing_router)
+app.include_router(agent_router)
+if agent_settings.enabled():
+    app.mount("/mcp", mcp_app)
 
 
 class ChatRequest(BaseModel):

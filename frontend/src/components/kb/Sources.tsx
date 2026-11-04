@@ -11,7 +11,7 @@ export default function Sources({ sources }: { sources: KbSource[] }) {
       <summary className="flex cursor-pointer select-none list-none items-center gap-2 px-3 py-2 text-xs font-medium text-ink-muted transition-colors duration-150 hover:text-ink">
         <ChevronRight className="size-3.5 transition-transform duration-150 group-open:rotate-90" aria-hidden />
         <span>
-          Sources · {sources.length} passage{sources.length === 1 ? "" : "s"} from {files} file{files === 1 ? "" : "s"}
+          Attached files · {sources.length} passage{sources.length === 1 ? "" : "s"} from {files} file{files === 1 ? "" : "s"}
         </span>
       </summary>
       <ul className="space-y-2 border-t border-line p-3">

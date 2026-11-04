@@ -7,6 +7,7 @@ import re
 import threading
 import time
 import uuid
+from dataclasses import replace
 from typing import Any, AsyncIterator
 
 import openai
@@ -15,7 +16,9 @@ from core.kb import attachments, config, guest, imagegen, memory, plans, usage a
 from core.kb.attachments import Attachment, AttachmentError, Upload
 from core.kb.clients import async_client
 from core.kb.identity import IDENTITY_REPLY, is_identity_question
-from core.kb.retrieval import Usage, retrieve, rewrite_query, summarize_history
+from core.kb.retrieval import Usage, rewrite_query, summarize_history
+from core.agent import settings as agent_settings
+from core.agent.security import Actor
 
 # ---- request log (JSON lines: prompt, retrieved chunks, answer, latency, tokens) ----------
 
@@ -38,48 +41,11 @@ def sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _pages(meta: dict[str, Any]) -> tuple[int, int]:
-    page = int(meta.get("page", 0) or 0)
-    return page, max(page, int(meta.get("page_end", page) or page))
-
-
-def citation_label(meta: dict[str, Any]) -> str:
-    """[source: file, page 3] - or [source: file, pages 3-4] when the passage crosses a page break."""
-    page, end = _pages(meta)
-    name = meta.get("source", "unknown")
-    if page <= 0:
-        return f"[source: {name}]"
-    return f"[source: {name}, page {page}]" if end == page else f"[source: {name}, pages {page}-{end}]"
-
-
-def source_payload(hit: dict[str, Any]) -> dict[str, Any]:
-    meta = hit["metadata"]
-    page, end = _pages(meta)
-    return {
-        "source": meta.get("source"),
-        "filename": meta.get("filename", meta.get("source")),
-        "page": page,
-        "page_end": end,
-        "chunk_id": meta.get("chunk_id"),
-        "similarity": round(hit["similarity"], 3),
-        "text": hit["text"][:400],
-    }
-
-
 def build_messages(
-    question: str, hits: list[dict[str, Any]], history: list[dict[str, str]], summary: str
+    question: str, history: list[dict[str, str]], summary: str
 ) -> list[dict[str, str]]:
-    """system instruction + retrieved context + (summary) + history + user question"""
-    if hits:
-        blocks = [f"{citation_label(h['metadata'])}\n{h['text']}" for h in hits]
-        context = "Context from the knowledge base:\n\n" + "\n\n---\n\n".join(blocks)
-    else:
-        context = "Context from the knowledge base:\n\n(No relevant passages were found for this question.)"
-
-    messages: list[dict[str, str]] = [
-        {"role": "system", "content": config.SYSTEM_PROMPT},
-        {"role": "system", "content": context},
-    ]
+    """General chat uses the assistant instruction and this conversation's own history."""
+    messages: list[dict[str, str]] = [{"role": "system", "content": config.SYSTEM_PROMPT}]
     if summary:
         messages.append({"role": "system", "content": f"Summary of the earlier conversation: {summary}"})
     messages.extend(history)
@@ -129,6 +95,8 @@ def build_attached_messages(
 def friendly_error(exc: Exception) -> str:
     if isinstance(exc, AttachmentError):
         return str(exc)
+    if isinstance(exc, TimeoutError):
+        return "This reply took too long to complete. Try a narrower question or ask me to continue."
     if isinstance(exc, openai.AuthenticationError):
         return "The OpenAI API key was rejected. Check OPENAI_API_KEY in your .env file."
     if isinstance(exc, openai.RateLimitError):
@@ -147,6 +115,11 @@ def friendly_error(exc: Exception) -> str:
 def _save_turn(
     conv: dict[str, Any], question: str, answer: str, sources: list[dict], stopped: bool,
     files: list[Attachment] | None = None, images: list[dict[str, Any]] | None = None,
+    model: str | None = None,
+    plan: plans.Plan | None = None,
+    external_sources: list[dict] | None = None,
+    private_owner: str | None = None,
+    database_context: bool = False,
 ) -> None:
     """Append the turn to memory (re-reading under the lock so a background summary isn't lost).
     `images`: pictures the chatbot generated for this answer (kept apart from the user's attachments)."""
@@ -165,10 +138,17 @@ def _save_turn(
         }
         if images:
             reply["images"] = images
+        if model:
+            reply["model"] = model
+        if external_sources:
+            reply["external_sources"] = external_sources
+        if private_owner:
+            current["private_owner"] = private_owner
+            current["database_context"] = bool(current.get("database_context") or database_context)
         current["messages"].append(reply)
         memory.store.save(current)
     threading.Thread(
-        target=memory.compress, args=(conv["session_id"], conv["id"], summarize_history), daemon=True
+        target=memory.compress, args=(conv["session_id"], conv["id"], summarize_history, plan), daemon=True
     ).start()
 
 
@@ -205,26 +185,34 @@ def _charge(
 
 
 def _model_options(model: str) -> dict[str, Any]:
-    """gpt-4 models take a temperature. The newer gpt-5 / gpt-6 models reject it and instead take a
-    reasoning effort, which keeps answers quick."""
+    """A generous completion budget, with only the sampling options each model family supports."""
+    options: dict[str, Any] = {"max_completion_tokens": config.MAX_COMPLETION_TOKENS}
     if model.startswith(("gpt-4", "gpt-3")):
-        return {"temperature": 0.2}
-    return {"reasoning_effort": config.REASONING_EFFORT} if config.REASONING_EFFORT else {}
+        options["temperature"] = 0.2
+    elif config.REASONING_EFFORT:
+        options["reasoning_effort"] = config.REASONING_EFFORT
+    return options
 
 
 async def stream_chat(
     conv: dict[str, Any], question: str, uploads: list[Upload] | None = None, is_guest: bool = False,
     plan: plans.Plan | None = None, user_id: str | None = None,
     hosted_images: list[Attachment] | None = None,
+    model: str | None = None,
+    actor: Actor | None = None,
 ) -> AsyncIterator[str]:
     """`question` is what the user typed (may be empty when they only attached files).
     `is_guest`: the visitor is not logged in, so the turn is counted against their free allowance.
     `plan` / `user_id`: a logged-in user's plan (picks the model and the image allowance) and their id."""
     plan = plan or plans.PLANS["free"]
+    model = plans.select_model(plan, model)
     started = time.perf_counter()
     usage = Usage()
     parts: list[str] = []
     sources: list[dict[str, Any]] = []
+    external_sources: list[dict] = []
+    private_owner = conv.get("private_owner")
+    database_context = bool(conv.get("database_context"))
     files: list[Attachment] = []  # files attached to this message, once read
     files_on_disk = False
     generated: list[dict[str, Any]] = []  # images the chatbot made for this answer
@@ -235,7 +223,7 @@ async def stream_chat(
     saved = False
 
     try:
-        yield sse("meta", {"conversation_id": conv["id"], "title": conv["title"]})
+        yield sse("meta", {"conversation_id": conv["id"], "title": conv["title"], "model": model})
 
         async for text, item in _read_uploads(uploads or []):
             if item is None:
@@ -277,14 +265,14 @@ async def stream_chat(
                     try:
                         async for beat in imagegen.keep_alive(task):
                             yield beat
-                        png, model = task.result()
+                        png, image_model = task.result()
                     finally:
                         if not task.done():
                             task.cancel()  # the user pressed stop, or left
                     image_id = await asyncio.to_thread(attachments.save_generated, conv["session_id"], conv["id"], png)
                     meta = {
                         "id": image_id, "name": "image.png", "mime": "image/png", "size": len(png),
-                        "prompt": art.prompt, "model": model,
+                        "prompt": art.prompt, "model": image_model,
                     }
                     generated.append(meta)
                     yield sse("image", meta)
@@ -320,31 +308,42 @@ async def stream_chat(
                 )
             else:
                 history = memory.recent_history(conv, plan)
-                standalone = await rewrite_query(question, history, summary, usage)
-                hits = await retrieve(standalone, usage)
-                sources = [source_payload(h) for h in hits]
-                messages = build_messages(question, hits, history, summary)
+                messages = build_messages(question, history, summary)
 
-            stream = await async_client().chat.completions.create(
-                model=plan.chat_model,
-                messages=messages,
-                stream=True,
-                stream_options={"include_usage": True},
-                **_model_options(plan.chat_model),
-            )
-            async for event in stream:
-                if event.usage:
-                    usage.add_chat(event.usage)
-                if event.choices and event.choices[0].delta.content:
-                    piece = event.choices[0].delta.content
-                    if first_token_ms is None:
-                        first_token_ms = int((time.perf_counter() - started) * 1000)
-                    parts.append(piece)
-                    yield sse("token", {"t": piece})
+            if agent_settings.enabled():
+                from core.agent.runner import run
+                tool_actor = replace(actor or Actor(), private_context=bool(private_owner))
+                async for kind, payload in run(messages, model, tool_actor, usage):
+                    if kind == "token":
+                        if first_token_ms is None:
+                            first_token_ms = int((time.perf_counter() - started) * 1000)
+                        parts.append(payload["t"])
+                    elif kind == "external_sources":
+                        external_sources = payload["sources"]
+                    elif kind == "private_context":
+                        if payload["private"] and tool_actor.subject != "guest":
+                            private_owner = tool_actor.subject
+                            database_context = database_context or payload["database"]
+                        continue
+                    yield sse(kind, payload)
+            else:
+                stream = await async_client().chat.completions.create(
+                    model=model, messages=messages, stream=True,
+                    stream_options={"include_usage": True}, **_model_options(model),
+                )
+                async for event in stream:
+                    if event.usage:
+                        usage.add_chat(event.usage)
+                    if event.choices and event.choices[0].delta.content:
+                        piece = event.choices[0].delta.content
+                        if first_token_ms is None:
+                            first_token_ms = int((time.perf_counter() - started) * 1000)
+                        parts.append(piece)
+                        yield sse("token", {"t": piece})
 
         answer = "".join(parts)
         yield sse("sources", {"sources": sources})
-        await asyncio.to_thread(_save_turn, conv, question, answer, sources, False, files, generated)
+        await asyncio.to_thread(_save_turn, conv, question, answer, sources, False, files, generated, model=model, plan=plan, external_sources=external_sources, private_owner=private_owner, database_context=database_context)
         saved = True
         _charge(conv, question, answer, files, user_id, len(generated), is_guest)
         status = "ok"
@@ -358,17 +357,17 @@ async def stream_chat(
         status = "stopped"
         raise
     except Exception as exc:
-        error_message = f"{type(exc).__name__}: {exc}"
+        error_message = type(exc).__name__  # provider errors can contain request URLs or credentials
         if isinstance(exc, AttachmentError):
             _logger.info("attachment rejected: %s", exc)  # the user's file, not a server fault
         else:
-            _logger.exception("chat request failed")
+            _logger.error("chat request failed type=%s", type(exc).__name__)
         yield sse("error", {"message": friendly_error(exc)})
     finally:
         answer = "".join(parts)
         if status == "stopped" and answer and not saved:
             try:  # synchronous on purpose: awaiting is not allowed while the generator is being closed
-                _save_turn(conv, question, answer, sources, True, files, generated)
+                _save_turn(conv, question, answer, sources, True, files, generated, model=model, plan=plan, external_sources=external_sources, private_owner=private_owner, database_context=database_context)
                 saved = True
                 _charge(conv, question, answer, files, user_id, len(generated), is_guest)
             except Exception:
@@ -384,6 +383,8 @@ async def stream_chat(
             "ts": memory.now(),
             "session_id": conv["session_id"],
             "conversation_id": conv["id"],
+            "model": model,
+            "external_sources": external_sources,
             "status": status,
             "prompt": question,
             "attachments": [a.name for a in files],

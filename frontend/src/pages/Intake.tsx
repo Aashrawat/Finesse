@@ -107,9 +107,9 @@ export default function Intake() {
       <main className="flex-1 px-4 py-8 md:px-8 lg:py-12">
         <div className="mx-auto min-w-0 max-w-4xl space-y-8">
           <section className="animate-rise">
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink-muted">AI video assistant · v2</p>
-            <h1 className="mt-4 text-5xl leading-[0.95] md:text-7xl">
-              <span className="text-lime">I can help with video and audio files</span>
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink-muted">Finesse / Media</p>
+            <h1 className="editorial-heading mt-4 text-5xl leading-[1.08] md:text-7xl">
+              Turn a recording into <span className="text-lime">understanding.</span>
             </h1>
             <p className="mt-5 max-w-xl text-base text-ink-muted">
               Drop in a recording. Get a summary, a timestamped transcript, and a chat that answers from the footage.
@@ -150,7 +150,7 @@ export default function Intake() {
                     )}
                     aria-hidden
                   />
-                  <p className="font-heading text-xl font-bold text-ink">Drop your reel here</p>
+                  <p className="font-heading text-xl font-bold text-ink">A little clarity starts here</p>
                   <p className="text-sm text-ink-muted">
                     or{" "}
                     <button

@@ -29,12 +29,12 @@ def main() -> None:
             {"_id": existing["_id"]},
             {"$set": {
                 "password_hash": service.hash_password(service.check_password(password)),
-                "plan": "premium",
+                "plan": "pro",
                 "role": "admin",
                 "email_verified": True,
             }},
         )
-        print("updated existing account to admin + premium")
+        print("updated existing account to admin + pro")
     user = users.find_one({"email": email})
     print("email_set=yes", "plan=" + user.get("plan", ""), "role=" + user.get("role", ""))
 

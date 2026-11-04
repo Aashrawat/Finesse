@@ -46,7 +46,7 @@ ENV UPLOAD_DIR=data/uploads \
     HF_HOME=/home/user/app/data/cache/huggingface
 
 # Serving over https behind the host's proxy: mark the login cookie secure
-ENV AUTH_COOKIE_SECURE=true
+ENV AUTH_COOKIE_SECURE=true MCP_INTERNAL_PORT=7860
 EXPOSE 7860
 
 # Starts as root only to fix the disk's ownership, then drops to "user"

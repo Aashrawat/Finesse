@@ -1,17 +1,18 @@
 import { useState, type ReactNode } from "react";
 import { Check, Copy, FileText } from "lucide-react";
+import MathExpression from "@/components/MathExpression";
 
 /**
  * Small, safe markdown renderer for LLM output. Supports headings, bullet / numbered lists,
  * paragraphs, fenced code blocks (with a copy button), tables, block quotes, **bold**, *italic*,
- * `inline code`, links, and `[source: file, page]` citations (rendered as chips).
+ * `inline code`, links, math, and `[source: file, page]` citations (rendered as chips).
  *
- * Everything is rendered as React nodes (never raw HTML) and only http(s) links are clickable.
+ * Markdown is rendered as React nodes; math uses KaTeX's untrusted-input mode. Only http(s) links are clickable.
  * It tolerates half-finished input, so it can render a streaming answer on every token.
  */
 
 const INLINE =
-  /\*\*(.+?)\*\*|`([^`\n]+)`|\[source:\s*([^\]]+)\]|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/[^\s)<>\]]+)|(?<![*\w])\*([^*\n]+)\*(?![*\w])/g;
+  /`([^`\n]+)`|\\{1,2}\(([\s\S]*?)\\{1,2}\)|\\{1,2}\[([\s\S]*?)\\{1,2}\]|\$\$([\s\S]*?)\$\$|(?<!\\)\$(?![\s$])((?:\\.|[^$\\\n])+?)(?<!\s)\$(?![\d$])|\*\*(.+?)\*\*|\[source:\s*([^\]]+)\]|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/[^\s)<>\]]+)|(?<![*\w])\*([^*\n]+)\*(?![*\w])/g;
 
 function Citation({ raw }: { raw: string }) {
   // "handbook.pdf, page 3" / "handbook.pdf, pages 3-4"  ->  handbook.pdf · p.3 / p.3-4
@@ -39,20 +40,21 @@ function inline(text: string): ReactNode[] {
     const index = m.index ?? 0;
     if (index > last) nodes.push(text.slice(last, index));
     if (m[1] !== undefined) {
-      nodes.push(<strong key={key++} className="font-semibold text-ink">{m[1]}</strong>);
-    } else if (m[2] !== undefined) {
       nodes.push(
         <code key={key++} className="rounded bg-track px-1.5 py-0.5 font-mono text-[0.85em] text-cyan">
-          {m[2]}
+          {m[1]}
         </code>,
       );
-    } else if (m[3] !== undefined) {
-      nodes.push(<Citation key={key++} raw={m[3]} />);
+    } else if (m[2] !== undefined || m[3] !== undefined || m[4] !== undefined || m[5] !== undefined) {
+      nodes.push(<MathExpression key={key++} expression={m[2] ?? m[3] ?? m[4] ?? m[5]} display={m[3] !== undefined || m[4] !== undefined} />);
+    } else if (m[6] !== undefined) {
+      nodes.push(<strong key={key++} className="font-semibold text-ink">{inline(m[6])}</strong>);
     } else if (m[7] !== undefined) {
-      nodes.push(<em key={key++}>{m[7]}</em>);
+      nodes.push(<Citation key={key++} raw={m[7]} />);
+    } else if (m[11] !== undefined) {
+      nodes.push(<em key={key++}>{inline(m[11])}</em>);
     } else {
-      const href = m[5] ?? m[6];
-      const label = m[4] ?? m[6];
+      const href = m[9] ?? m[10];
       nodes.push(
         <a
           key={key++}
@@ -61,7 +63,7 @@ function inline(text: string): ReactNode[] {
           rel="noopener noreferrer"
           className="break-words text-cyan underline decoration-cyan/40 underline-offset-2 hover:decoration-cyan"
         >
-          {label}
+          {m[8] !== undefined ? inline(m[8]) : m[10]}
         </a>,
       );
     }
@@ -75,6 +77,7 @@ type Block =
   | { type: "heading"; level: number; text: string }
   | { type: "list"; ordered: boolean; items: string[] }
   | { type: "code"; lang: string; code: string }
+  | { type: "math"; expression: string }
   | { type: "table"; header: string[]; rows: string[][] }
   | { type: "quote"; text: string }
   | { type: "rule" }
@@ -112,6 +115,32 @@ function parse(markdown: string): Block[] {
       i++;
       while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) code.push(lines[i++]);
       blocks.push({ type: "code", lang: fence[1], code: code.join("\n") });
+      continue;
+    }
+
+    // Collect display math before parsing Markdown so blank lines, alignment and table-like TeX survive.
+    const math = line.match(/^(\$\$|\\{1,2}\[)(.*)$/);
+    if (math) {
+      flush();
+      const closer = math[1] === "$$" ? "$$" : `${math[1].slice(0, -1)}]`;
+      const expression: string[] = [];
+      let remainder = math[2];
+      let end = i;
+      while (!remainder.includes(closer) && end < lines.length - 1) {
+        expression.push(remainder);
+        remainder = lines[++end];
+      }
+      const close = remainder.indexOf(closer);
+      if (close < 0) {
+        // Preserve unfinished delimiters verbatim until the rest of the equation streams in.
+        blocks.push({ type: "paragraph", text: lines.slice(i).join("\n") });
+        break;
+      }
+      expression.push(remainder.slice(0, close));
+      blocks.push({ type: "math", expression: expression.join("\n").trim() });
+      const trailing = remainder.slice(close + closer.length).trim();
+      if (trailing) paragraph.push(trailing);
+      i = end;
       continue;
     }
 
@@ -222,11 +251,11 @@ export default function Markdown({ text, skipTitle }: Props) {
             // The page already shows the report title, so # and ## both render as section headings.
             return block.level <= 2 ? (
               <h2 key={i} className="border-t border-line pt-5 font-heading text-2xl text-ink first:border-t-0 first:pt-0">
-                {block.text}
+                {inline(block.text)}
               </h2>
             ) : (
               <h3 key={i} className="pt-1 font-heading text-lg text-ink">
-                {block.text}
+                {inline(block.text)}
               </h3>
             );
           case "list": {
@@ -244,6 +273,8 @@ export default function Markdown({ text, skipTitle }: Props) {
           }
           case "code":
             return <CodeBlock key={i} lang={block.lang} code={block.code} />;
+          case "math":
+            return <MathExpression key={i} expression={block.expression} display />;
           case "table":
             return (
               <div key={i} className="studio-scroll overflow-x-auto rounded-row border border-line">

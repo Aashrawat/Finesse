@@ -1,10 +1,12 @@
 import { memo, useRef, useState } from "react";
 import { AlertTriangle, Check, Copy, Loader2, Square, Volume2 } from "lucide-react";
 import { toast } from "sonner";
+import FinesseMark from "@/components/FinesseMark";
 import Markdown from "@/components/research/Markdown";
 import GeneratedImages from "@/components/kb/GeneratedImages";
 import MessageAttachments from "@/components/kb/MessageAttachments";
 import Sources from "@/components/kb/Sources";
+import ExternalSources from "@/components/kb/ExternalSources";
 import { kbApi } from "@/lib/kbApi";
 import type { KbMessage } from "@/lib/types";
 
@@ -92,7 +94,7 @@ function MessageBubble({
   return (
     <div className="group flex gap-3" data-testid="kb-message-assistant" data-streaming={message.streaming ? "true" : "false"}>
       <div className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full border border-line bg-panel">
-        <img src="/logo.png" alt="" className="logo-mark h-4 w-auto" />
+        <FinesseMark className="size-4" />
       </div>
 
       <div className="min-w-0 flex-1">
@@ -106,6 +108,7 @@ function MessageBubble({
             )}
           </div>
         )}
+        {message.streaming && message.status && !waiting && <p role="status" className="mb-2 text-xs text-ink-muted">{message.status}</p>}
 
         {message.images && message.images.length > 0 && (
           <GeneratedImages images={message.images} conversationId={conversationId} />
@@ -142,6 +145,7 @@ function MessageBubble({
         )}
 
         {!message.streaming && <Sources sources={message.sources} />}
+        {!message.streaming && message.external_sources && <ExternalSources sources={message.external_sources} />}
 
         {!message.streaming && message.content && (
           <div className="mt-2 flex gap-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100">

@@ -8,6 +8,7 @@ import type {
   KbDocuments,
   KbGeneratedImage,
   KbSource,
+  ExternalSource,
 } from "@/lib/types";
 
 /* ---- per-user session id ------------------------------------------------------------------
@@ -71,7 +72,7 @@ export const kbApi = {
       "/api/ingest",
       withSession({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ force }) }),
     ),
-  /** Spoken reply (Pro and Premium). Returns an MP3 blob. */
+  /** Spoken reply (Pro). Returns an MP3 blob. */
   speak: async (text: string): Promise<Blob> => {
     const res = await fetch("/api/chat/speech", withSession({
       method: "POST",
@@ -95,11 +96,12 @@ export const kbApi = {
 /* ---- streaming chat (Server-Sent Events over fetch, so we can POST and abort) ----------------- */
 
 export interface StreamHandlers {
-  onMeta?: (meta: { conversation_id: string; title: string }) => void;
+  onMeta?: (meta: { conversation_id: string; title: string; model?: string }) => void;
   onStatus?: (text: string) => void;
   onImage?: (image: KbGeneratedImage) => void;
   onToken?: (token: string) => void;
   onSources?: (sources: KbSource[]) => void;
+  onExternalSources?: (sources: ExternalSource[]) => void;
   onDone?: (done: ChatDone) => void;
   onError?: (message: string) => void;
 }
@@ -114,7 +116,7 @@ export interface UploadedImage {
 }
 
 export async function streamChat(
-  body: { message: string; conversation_id?: string; files?: File[]; images?: UploadedImage[] },
+  body: { message: string; conversation_id?: string; files?: File[]; images?: UploadedImage[]; model?: string },
   handlers: StreamHandlers,
   signal: AbortSignal,
 ): Promise<void> {
@@ -122,6 +124,7 @@ export async function streamChat(
   const form = new FormData();
   form.append("message", body.message);
   if (body.conversation_id) form.append("conversation_id", body.conversation_id);
+  if (body.model) form.append("model", body.model);
   if (body.images?.length) {
     form.append(
       "cloud_images",
@@ -186,6 +189,7 @@ export async function streamChat(
       case "image": handlers.onImage?.(payload); break;
       case "token": handlers.onToken?.(payload.t); break;
       case "sources": handlers.onSources?.(payload.sources); break;
+      case "external_sources": handlers.onExternalSources?.(payload.sources); break;
       case "done": handlers.onDone?.(payload); break;
       case "error": handlers.onError?.(payload.message); break;
     }

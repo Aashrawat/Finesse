@@ -44,7 +44,7 @@ def main() -> None:
     stripe.api_key = key
     created: list[str] = []
 
-    for plan, name, amount in (("pro", "Finesse Pro", 1299), ("premium", "Finesse Premium", 2499)):
+    for plan, name, amount in (("pro", "Finesse Pro", 1299),):
         env_name = f"STRIPE_PRICE_{plan.upper()}"
         if values.get(env_name):
             print(f"{env_name} already set")

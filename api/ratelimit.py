@@ -1,5 +1,3 @@
-"""Small in-memory sliding-window rate limiter (per key, e.g. per user session)."""
-
 import threading
 import time
 from collections import defaultdict, deque

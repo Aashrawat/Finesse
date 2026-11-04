@@ -2,9 +2,11 @@
 import { ArrowUp, Camera, FileText, Images, Mic, Paperclip, Plus, Square, X } from "lucide-react";
 import { toast } from "sonner";
 import CameraDialog from "@/components/kb/CameraDialog";
+import ModelPicker from "@/components/kb/ModelPicker";
 import { fileLabel, formatSize } from "@/components/kb/MessageAttachments";
 import { useSpeechInput } from "@/lib/useSpeechInput";
 import { cn } from "@/lib/utils";
+import type { ChatModel } from "@/lib/types";
 
 const MAX_CHARS = 4000;
 const ACCEPT_PHOTOS = "image/*";
@@ -32,11 +34,16 @@ interface Props {
   focusKey?: string;
   /** Guests (not logged in) may only attach a few files in total: how many they still can. */
   guestFilesLeft?: number;
+  /** A starter fills the box for review before the user sends it. */
+  draft?: { text: string; key: number };
+  models: ChatModel[];
+  model: string;
+  onModelChange: (model: string) => void;
 }
 
 const isImageFile = (f: File) => f.type.startsWith("image/");
 
-export default function Composer({ streaming, onSend, onStop, focusKey, guestFilesLeft }: Props) {
+export default function Composer({ streaming, onSend, onStop, focusKey, guestFilesLeft, draft, models, model, onModelChange }: Props) {
   const [text, setText] = useState("");
   const [pending, setPending] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -77,12 +84,19 @@ export default function Composer({ streaming, onSend, onStop, focusKey, guestFil
 
   // A different chat was opened: focus the box and drop files that were never sent
   useEffect(() => {
+    setText("");
+    setPending([]);
     ref.current?.focus();
     return () => {
       pendingRef.current.forEach((p) => p.url && URL.revokeObjectURL(p.url));
-      setPending([]);
     };
   }, [focusKey]);
+
+  useEffect(() => {
+    if (!draft) return;
+    setText(draft.text);
+    ref.current?.focus();
+  }, [draft]);
 
   // Close the + menu on outside click or Escape
   useEffect(() => {
@@ -192,14 +206,14 @@ export default function Composer({ streaming, onSend, onStop, focusKey, guestFil
   }
 
   return (
-    <div className="px-4 pb-4 pt-2 md:px-6">
-      <div className="mx-auto max-w-3xl">
+    <div className="chat-composer shrink-0 px-4 pb-4 pt-2 md:px-10 md:pb-5">
+      <div className="mx-auto max-w-[780px]">
         <div
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
           className={cn(
-            "rounded-2xl border bg-panel p-2 transition-colors duration-150 focus-within:border-lime/50",
+            "composer-surface rounded-[20px] border bg-panel p-3 transition-[border-color,box-shadow] duration-200 focus-within:border-lime/50",
             dragging ? "border-lime bg-lime/[0.06]" : "border-line",
           )}
         >
@@ -239,7 +253,30 @@ export default function Composer({ streaming, onSend, onStop, focusKey, guestFil
             </ul>
           )}
 
-          <div className="flex items-end gap-2">
+          <label className="block min-w-0">
+            <span className="sr-only">Message</span>
+            <textarea
+              ref={ref}
+              value={text}
+              rows={2}
+              onChange={(e) => {
+                voice.abort();
+                setText(e.target.value);
+              }}
+              onKeyDown={onKeyDown}
+              onPaste={onPaste}
+              placeholder={
+                voice.listening ? "Listening… speak now"
+                : dragging ? "Drop files to attach them"
+                : pending.length ? "What would you like to know about these?"
+                : "What’s on your mind?"
+              }
+              data-testid="kb-input"
+              className="no-focus-ring block max-h-[200px] min-h-14 w-full resize-none bg-transparent px-2 py-2 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none"
+            />
+          </label>
+
+          <div className="mt-2 flex items-center gap-2">
             <div ref={menuRoot} className="relative shrink-0">
               {menuOpen && (
                 <div
@@ -275,34 +312,14 @@ export default function Composer({ streaming, onSend, onStop, focusKey, guestFil
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
                 data-testid="kb-upload-button"
-                className="grid size-10 place-items-center rounded-full text-ink-muted transition-colors duration-150 hover:bg-panel-hover hover:text-ink"
+                className="grid size-8 place-items-center rounded-lg border border-line text-ink-muted transition-colors duration-150 hover:bg-panel-hover hover:text-ink"
               >
-                <Plus className={cn("size-5 transition-transform duration-150", menuOpen && "rotate-45")} aria-hidden />
+                <Plus className={cn("size-4 transition-transform duration-150", menuOpen && "rotate-45")} aria-hidden />
               </button>
             </div>
 
-            <label className="min-w-0 flex-1">
-              <span className="sr-only">Message</span>
-              <textarea
-                ref={ref}
-                value={text}
-                rows={1}
-                onChange={(e) => {
-                  voice.abort(); // typing takes over from speaking
-                  setText(e.target.value);
-                }}
-                onKeyDown={onKeyDown}
-                onPaste={onPaste}
-                placeholder={
-                  voice.listening ? "Listening… speak now"
-                  : dragging ? "Drop files to attach them"
-                  : pending.length ? "Add a message, or just send"
-                  : "Ask Finesse"
-                }
-                data-testid="kb-input"
-                className="no-focus-ring block max-h-[200px] w-full resize-none bg-transparent px-2 py-2 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none"
-              />
-            </label>
+            <span className="hidden text-[11px] text-ink-faint sm:inline">Add a file or photo</span>
+            <ModelPicker models={models} value={model} onChange={onModelChange} disabled={streaming} />
 
             {voice.supported && (
               <button
@@ -313,12 +330,12 @@ export default function Composer({ streaming, onSend, onStop, focusKey, guestFil
                 title={voice.listening ? "Stop listening" : "Speak your message"}
                 data-testid="kb-mic-button"
                 className={cn(
-                  "relative grid size-10 shrink-0 place-items-center rounded-full transition-colors duration-150",
+                  "relative grid size-8 shrink-0 place-items-center rounded-lg transition-colors duration-150",
                   voice.listening ? "bg-danger/15 text-danger" : "text-ink-muted hover:bg-panel-hover hover:text-ink",
                 )}
               >
                 {voice.listening && <span className="absolute inset-0 animate-ping rounded-full bg-danger/25" aria-hidden />}
-                <Mic className="relative size-5" aria-hidden />
+                <Mic className="relative size-4" aria-hidden />
               </button>
             )}
 
@@ -328,7 +345,7 @@ export default function Composer({ streaming, onSend, onStop, focusKey, guestFil
                 onClick={onStop}
                 aria-label="Stop generating"
                 data-testid="kb-stop-button"
-                className="grid size-10 shrink-0 place-items-center rounded-xl bg-ink text-page transition-transform duration-150 active:scale-95"
+                className="grid size-9 shrink-0 place-items-center rounded-xl bg-ink text-page transition-transform duration-150 active:scale-95"
               >
                 <Square className="size-4 fill-current" aria-hidden />
               </button>
@@ -340,8 +357,8 @@ export default function Composer({ streaming, onSend, onStop, focusKey, guestFil
                 aria-label="Send message"
                 data-testid="kb-send-button"
                 className={cn(
-                  "grid size-10 shrink-0 place-items-center rounded-xl transition-[transform,opacity,background-color] duration-150 active:scale-95",
-                  canSend ? "bg-lime text-on-accent hover:shadow-[0_0_20px_color-mix(in_srgb,var(--color-lime)_30%,transparent)]" : "bg-panel-hover text-ink-faint",
+                  "grid size-9 shrink-0 place-items-center rounded-xl transition-[transform,opacity,background-color] duration-150 active:scale-95 disabled:cursor-not-allowed",
+                  canSend ? "bg-lime text-on-accent hover:opacity-90" : "bg-lime/20 text-lime/50",
                 )}
               >
                 <ArrowUp className="size-5" aria-hidden />
@@ -349,6 +366,11 @@ export default function Composer({ streaming, onSend, onStop, focusKey, guestFil
             )}
           </div>
         </div>
+
+        <p className="composer-footnote mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-1 text-[10px] text-ink-faint">
+          <span>A little intelligence. A human touch.</span>
+          <span><kbd>Enter</kbd> to send <span className="px-1.5" aria-hidden>·</span> <kbd>Shift + Enter</kbd> for a new line</span>
+        </p>
 
         {text.length > MAX_CHARS * 0.9 && (
           <p className="mt-2 text-center text-[11px]">

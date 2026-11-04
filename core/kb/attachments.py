@@ -226,6 +226,26 @@ def has_files(conv: dict[str, Any], new: list[Attachment]) -> bool:
     return bool(new) or any(m.get("attachments") for m in conv["messages"])
 
 
+def public_messages(conv: dict[str, Any]) -> list[dict[str, Any]]:
+    """Keep source cards only for documents attached before that answer in this chat.
+
+    Older saves may contain shared-library hits (filename::chunk). Conversation attachments
+    use attachment-id::chunk instead. Filter the response without rewriting the saved history.
+    """
+    document_ids: set[str] = set()
+    messages = []
+    for message in conv["messages"]:
+        document_ids.update(
+            a["id"] for a in message.get("attachments", []) if a.get("kind") == "document"
+        )
+        sources = [
+            source for source in message.get("sources", [])
+            if str(source.get("chunk_id", "")).partition("::")[0] in document_ids
+        ]
+        messages.append({**message, "sources": sources})
+    return messages
+
+
 # --------------------------------------------------------------------------- images in the prompt
 def _data_url(jpeg: bytes) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()
@@ -290,7 +310,7 @@ def earlier_documents(conv: dict[str, Any]) -> list[str]:
 
 def _load_docs(conv: dict[str, Any], new: list[Attachment]) -> list[_Doc]:
     """The documents the answer may use. A document attached with this message replaces the earlier ones
-    (like ChatGPT / Claude): otherwise a question about the new file would be answered from the old ones too.
+    so a question about the new file is not answered from the old ones too.
     A follow-up question without a new document uses the documents of the most recent message that had some."""
     fresh = [_Doc(a.id, a.name, a.pages) for a in new if a.kind == "document"]
     if fresh:
@@ -321,7 +341,7 @@ def _vectors(session_id: str, conversation_id: str, doc: _Doc) -> tuple[list[dic
         data = json.loads(cache.read_text(encoding="utf-8"))
         return data["chunks"], np.array(data["vectors"], dtype=np.float32)
 
-    from core.kb.ingest import embed_texts
+    from core.kb.clients import embed_texts
 
     chunks = [{"text": c.text, "page": c.page, "page_end": c.page_end} for c in chunk_pages(doc.pages)]
     vectors = embed_texts([c["text"] for c in chunks])

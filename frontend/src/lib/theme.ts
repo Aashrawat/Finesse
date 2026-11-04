@@ -14,6 +14,7 @@ export interface Accent {
 }
 
 export const ACCENTS: Accent[] = [
+  { id: "copper", name: "Copper", dark: "#E7A080", light: "#99502E" },
   { id: "lime", name: "Lime", dark: "#CCFF00", light: "#4F7A00" },
   { id: "blue", name: "Blue", dark: "#4DA3FF", light: "#1D63D6" },
   { id: "green", name: "Green", dark: "#34D399", light: "#0A7F4F" },
@@ -75,7 +76,7 @@ function forLight(hex: string): string {
 /** Lighten a colour until it reads as text on the dark page. */
 function forDark(hex: string): string {
   let out = hex;
-  for (let i = 0; i < 20 && contrast(out, "#0B0C10") < 4.5; i++) out = mix(out, "#FFFFFF", 0.1);
+  for (let i = 0; i < 20 && contrast(out, "#1B1C1A") < 4.5; i++) out = mix(out, "#FFFFFF", 0.1);
   return out;
 }
 
@@ -98,13 +99,13 @@ function read(): ThemeChoice {
     const saved = JSON.parse(localStorage.getItem(KEY) || "null");
     if (saved && typeof saved === "object") {
       const mode: Mode = saved.mode === "light" || saved.mode === "system" ? saved.mode : "dark";
-      const accent = ACCENTS.some((a) => a.id === saved.accent) || saved.accent === CUSTOM ? saved.accent : "lime";
+      const accent = ACCENTS.some((a) => a.id === saved.accent) || saved.accent === CUSTOM ? saved.accent : "copper";
       return { mode, accent, custom: isHex(saved.custom) ? saved.custom : DEFAULT_CUSTOM };
     }
   } catch {
     /* storage blocked or corrupt: use the defaults */
   }
-  return { mode: "dark", accent: "lime", custom: DEFAULT_CUSTOM };
+  return { mode: "dark", accent: "copper", custom: DEFAULT_CUSTOM };
 }
 
 function build(choice: ThemeChoice): ThemeState {
@@ -118,7 +119,7 @@ function paint(state: ThemeState) {
   root.dataset.theme = state.resolved;
   root.style.setProperty("--color-lime", v.accent);
   root.style.setProperty("--color-on-accent", v.on);
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", state.resolved === "light" ? "#FFFFFF" : "#0B0C10");
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", state.resolved === "light" ? "#F7F5F0" : "#1B1C1A");
 }
 
 let state: ThemeState = build(read());

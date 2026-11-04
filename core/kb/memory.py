@@ -105,7 +105,10 @@ class FileConversationStore:
             if name.endswith(".json"):
                 conv = self.get(session_id, name[:-5])
                 if conv:
-                    items.append({k: conv[k] for k in ("id", "title", "created_at", "updated_at")})
+                    item = {k: conv[k] for k in ("id", "title", "created_at", "updated_at")}
+                    if conv.get("private_owner"):
+                        item.update(private_owner=conv["private_owner"], database_context=bool(conv.get("database_context")))
+                    items.append(item)
         return sorted(items, key=lambda c: c["updated_at"], reverse=True)
 
     def delete(self, session_id: str, conversation_id: str) -> bool:
@@ -140,7 +143,7 @@ def _tokens(message: dict[str, Any]) -> int:
 def window_start(messages: list[dict[str, Any]], plan: plans.Plan | None = None) -> int:
     """Index of the first message kept verbatim: at most the last N turns (2 messages each)
     and within the history token budget. Everything before it is "older" history.
-    Paid plans keep more of the conversation (Pro: longer context, Premium: more memory)."""
+    Pro keeps more of the conversation in context."""
     chosen = plan or plans.get("free")
     keep = 0
     used = 0
@@ -161,7 +164,9 @@ def window_start(messages: list[dict[str, Any]], plan: plans.Plan | None = None)
 def recent_messages(conversation: dict[str, Any], plan: plans.Plan | None = None) -> list[dict[str, Any]]:
     """The stored messages inside the prompt window (with their attachments)."""
     messages = conversation["messages"]
-    start = max(window_start(messages, plan), conversation.get("summarized_upto", 0))
+    # Summaries may have been made under a smaller plan/window. They must not prevent
+    # the current plan from including the full recent messages that now fit.
+    start = window_start(messages, plan)
     return messages[start:]
 
 

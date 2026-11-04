@@ -14,7 +14,7 @@ langchain-core>=0.3.0
 langchain-community>=0.3.0
 langchain-text-splitters>=0.3.0
 langchain-openai>=0.2.0     # ChatOpenAI for summary, action items, key decisions
-openai>=1.40.0
+openai>=3.42,<4           # Responses API streaming and function calling for MCP agents
 pydantic>=2.7.0             # structured output schemas for actions/decisions
 
 # ---- RAG pipeline (chat with transcript) ----
@@ -41,8 +41,7 @@ requests>=2.31.0
 python-dotenv>=1.0.1        # load OPENAI_API_KEY from .env
 tqdm>=4.66.0
 
-# ---- Knowledge-base chatbot (OpenAI SDK + ChromaDB RAG) ----
-openai>=1.30.0
+# ---- Chat attachments and conversation history ----
 chromadb>=0.5.0
 tiktoken>=0.7.0         # token-based chunking
 pypdf>=5.0.0              # PDF loader (fallback if PyMuPDF is unavailable)
@@ -59,3 +58,9 @@ google-auth>=2.29        # verify Firebase / Google ID tokens for Continue with 
 # ---- Email (Resend) and payments (Stripe) ----
 resend>=2.0           # sends the sign-up codes and billing emails; set RESEND_API_KEY and EMAIL_FROM in .env
 stripe>=12.0           # subscriptions: Checkout, Customer Portal and webhooks
+
+# ---- MCP agent (official SDK's supported FastMCP 1.x line; prevent a breaking 2.x upgrade) ----
+mcp>=1.30,<2
+httpx>=0.28,<1         # MCP HTTP transport and external service requests
+PyJWT>=2.10,<3         # short-lived, audience-bound backend-to-MCP credentials
+tzdata>=2025.2         # IANA time zones on Windows and minimal Docker images

@@ -5,7 +5,7 @@ import json
 import logging
 from typing import Any
 
-from core.kb import config, store
+from core.kb import config
 from core.kb.clients import async_client, sync_client
 
 _logger = logging.getLogger("kb.retrieval")
@@ -103,7 +103,9 @@ async def _rerank(query: str, candidates: list[dict[str, Any]], usage: Usage) ->
 
 
 async def retrieve(query: str, usage: Usage) -> list[dict[str, Any]]:
-    """Top-k chunks (above the similarity threshold) for a standalone query."""
+    """Legacy shared-index search, unused by Finesse chat."""
+    from core.kb import store
+
     vector = await embed_query(query, usage)
     fetch = config.TOP_K * 2 if config.RERANK else config.TOP_K
     hits = await asyncio.to_thread(store.query, vector, fetch)

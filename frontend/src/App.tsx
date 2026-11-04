@@ -11,13 +11,13 @@ export default function App() {
     <Routes>
       {/* The app opens on Chat */}
       <Route path="/" element={<Navigate to="/chat" replace />} />
-      {/* AI video & audio assistant */}
+      {/* Media workspace */}
       <Route path="/video" element={<Intake />} />
       <Route path="/v/:id" element={<Workspace />} />
       {/* Multi-agent research */}
       <Route path="/research" element={<ResearchHome />} />
       <Route path="/research/:id" element={<ResearchReport />} />
-      {/* Knowledge-base chat (one route with an optional id, so switching chats doesn't remount the page) */}
+      {/* Chat (one route with an optional id, so switching chats doesn't remount the page) */}
       <Route path="/chat/:id?" element={<KbChat />} />
       {/* Subscription plans */}
       <Route path="/pricing" element={<Pricing />} />

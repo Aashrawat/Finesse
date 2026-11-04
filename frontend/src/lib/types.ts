@@ -129,6 +129,8 @@ export interface KbMessage {
   content: string;
   sources: KbSource[];
   created_at: string;
+  model?: string;
+  external_sources?: ExternalSource[];
   attachments?: KbAttachment[];
   images?: KbGeneratedImage[]; // assistant messages: pictures the chatbot created
   stopped?: boolean; // generation was stopped by the user
@@ -173,6 +175,20 @@ export interface IngestResult {
 }
 
 /** What a visitor may still use: the free allowance of a guest, or today's use on a logged-in user's plan. */
+export interface ChatModel {
+  id: string;
+  name: string;
+  description: string;
+  pro_only: boolean;
+  available: boolean;
+}
+
+export interface ExternalSource {
+  title: string;
+  url: string;
+  tool?: string;
+}
+
 export interface ChatQuota {
   guest: boolean;
   blocked: boolean;
@@ -185,6 +201,7 @@ export interface ChatQuota {
   plan?: string;
   plan_name?: string;
   model?: string;
+  models?: ChatModel[];
   messages_used?: number;
   messages_limit?: number;
   images_used?: number;
@@ -234,7 +251,7 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
-  plan: string; // "free" | "pro" | "premium"
+  plan: string; // "free" | "pro"
   role?: "admin" | "user";
   email_verified: boolean;
   subscription: {

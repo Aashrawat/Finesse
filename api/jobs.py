@@ -1,4 +1,3 @@
-"""Background processing. One worker thread: Whisper on CPU can only run one job at a time."""
 import os
 import traceback
 import uuid

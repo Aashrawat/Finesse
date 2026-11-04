@@ -17,7 +17,7 @@ export default function ResearchHome() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user, openAuth } = useAuth();
-  const allowed = user?.plan === "premium";
+  const allowed = user?.plan === "pro";
   const [topic, setTopic] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -50,13 +50,12 @@ export default function ResearchHome() {
       <main className="flex-1 px-4 py-8 md:px-8 lg:py-12">
         <div className="mx-auto min-w-0 max-w-4xl space-y-8">
           <section className="animate-rise">
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink-muted">Multi-agent research</p>
-            <h1 className="mt-4 text-5xl leading-[0.95] md:text-7xl">
-              <span className="text-lime">Research anything</span>
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink-muted">Finesse / Research</p>
+            <h1 className="editorial-heading mt-4 text-5xl leading-[1.08] md:text-7xl">
+              Follow your <em className="text-lime">curiosity.</em>
             </h1>
             <p className="mt-5 max-w-xl text-base text-ink-muted">
-              Four agents work in turn: one searches the web, one reads the best page, one writes the report and one
-              critiques it.
+              Bring a question worth exploring. Get a sourced report that connects the details and helps you see the bigger picture.
             </p>
           </section>
 
@@ -66,8 +65,8 @@ export default function ResearchHome() {
               style={{ animationDelay: "80ms" }}
               data-testid="research-plan-wall"
             >
-              <p className="text-base text-ink-body">The advanced research agent is part of Premium.</p>
-              <p className="mt-1 text-sm text-ink-muted">Four agents search, read, write and critique a report for you.</p>
+              <p className="text-base text-ink-body">Go a little deeper with Pro.</p>
+              <p className="mt-1 text-sm text-ink-muted">Explore a topic in depth with a clear report and sources you can follow.</p>
               <div className="mt-5 flex justify-center gap-2">
                 {!user ? (
                   <button
@@ -83,7 +82,7 @@ export default function ResearchHome() {
                     onClick={() => navigate("/pricing")}
                     className="inline-flex h-11 items-center rounded-row bg-lime px-5 font-heading text-sm font-bold text-on-accent"
                   >
-                    Upgrade to Premium
+                    Upgrade to Pro
                   </button>
                 )}
               </div>

@@ -17,7 +17,7 @@ from pathlib import Path
 
 from core.kb import config, store
 from core.kb.chunking import chunk_pages
-from core.kb.clients import sync_client
+from core.kb.clients import embed_texts
 from core.kb.loaders import EmptyDocument, TransientLoadError, load_document
 
 _ingest_lock = threading.Lock()  # one ingestion at a time (CLI and API share this within a process)
@@ -53,17 +53,6 @@ def find_files(folder: Path) -> list[Path]:
 
 def source_name(path: Path, folder: Path) -> str:
     return path.relative_to(folder).as_posix()
-
-
-def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Embed in batches. The SDK retries rate limits / transient errors with backoff."""
-    client = sync_client()
-    vectors: list[list[float]] = []
-    for i in range(0, len(texts), config.EMBED_BATCH_SIZE):
-        batch = texts[i : i + config.EMBED_BATCH_SIZE]
-        response = client.embeddings.create(model=config.EMBED_MODEL, input=batch)
-        vectors.extend(item.embedding for item in sorted(response.data, key=lambda d: d.index))
-    return vectors
 
 
 def scan(folder: str | Path | None = None) -> dict:

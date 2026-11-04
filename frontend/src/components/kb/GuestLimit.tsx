@@ -35,7 +35,7 @@ export function LoginWall() {
 
 /** Replaces the message box when a logged-in user has used all of today's messages on their plan. */
 export function PlanLimitWall({ quota }: { quota: ChatQuota }) {
-  const top = quota.plan === "premium";
+  const top = quota.plan === "pro";
   return (
     <div className="px-4 pb-4 pt-2 md:px-6" data-testid="kb-plan-wall">
       <div className="mx-auto flex max-w-3xl flex-col items-center gap-3 rounded-2xl border border-line bg-panel px-5 py-5 text-center sm:flex-row sm:justify-between sm:text-left">
@@ -74,7 +74,7 @@ export function PlanUsage({ quota }: { quota: ChatQuota }) {
   return (
     <p className="px-4 pt-1 text-center font-mono text-[11px] text-ink-faint md:px-6" data-testid="kb-plan-usage">
       {quota.plan_name} plan: {left} message{left === 1 ? "" : "s"} left today.{" "}
-      {quota.plan !== "premium" && (
+      {quota.plan !== "pro" && (
         <Link to="/pricing" className="text-lime hover:underline">Upgrade</Link>
       )}
     </p>

@@ -20,12 +20,13 @@ from pymongo.errors import DuplicateKeyError
 
 from core.auth import otp
 from core.auth.db import get_db
+from core.kb import plans
 
 SESSION_DAYS = int(os.getenv("AUTH_SESSION_DAYS", "30") or 30)
 MIN_PASSWORD = 8
 MAX_PASSWORD = 128
 MAX_NAME = 60
-# Comma-separated. These accounts always get Premium and are not demoted by Stripe.
+# Comma-separated. These accounts always get Pro and are not demoted by Stripe.
 ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "finesse7047@gmail.com").split(",") if e.strip()}
 
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
@@ -136,14 +137,14 @@ def is_admin(doc: dict | None) -> bool:
 
 
 def apply_admin(doc: dict) -> dict:
-    """Keep the admin mailbox on Premium, even if they signed up as Free."""
+    """Keep the admin mailbox on Pro, even if they signed up as Free."""
     if not is_admin(doc):
         return doc
     updates = {}
     if doc.get("role") != "admin":
         updates["role"] = "admin"
-    if doc.get("plan") != "premium":
-        updates["plan"] = "premium"
+    if doc.get("plan") != "pro":
+        updates["plan"] = "pro"
     if updates:
         get_db().users.update_one({"_id": doc["_id"]}, {"$set": updates})
         doc.update(updates)
@@ -156,7 +157,7 @@ def public_user(doc: dict) -> dict:
         "id": str(doc["_id"]),
         "name": doc["name"],
         "email": doc["email"],
-        "plan": doc.get("plan", "free"),
+        "plan": "pro" if is_admin(doc) else plans.for_user(doc).id,
         "role": "admin" if is_admin(doc) else "user",
         "email_verified": doc.get("email_verified", True),  # accounts made before verification existed count as verified
         "subscription": {
@@ -177,7 +178,7 @@ def create_user(name: str, email: str, password: str) -> dict:
         "name": clean_name(name),
         "email": address,
         "password_hash": hash_password(check_password(password)),
-        "plan": "premium" if admin else "free",
+        "plan": "pro" if admin else "free",
         "role": "admin" if admin else "user",
         "email_verified": admin,  # the seeded admin can log in without an emailed code
         "subscription": {"plan": "free", "status": "inactive"},
@@ -318,7 +319,7 @@ def login_with_google(claims: dict) -> tuple[dict, bool]:
             "name": name,
             "email": address,
             "password_hash": None,
-            "plan": "premium" if admin else "free",
+            "plan": "pro" if admin else "free",
             "role": "admin" if admin else "user",
             "email_verified": admin,
             "auth_provider": "google",

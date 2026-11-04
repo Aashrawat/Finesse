@@ -22,6 +22,16 @@ def sync_client() -> OpenAI:
     return OpenAI(api_key=_key(), max_retries=config.OPENAI_MAX_RETRIES, timeout=config.OPENAI_TIMEOUT)
 
 
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    """Embed text in batches without reading or writing a document index."""
+    client = sync_client()
+    vectors: list[list[float]] = []
+    for i in range(0, len(texts), config.EMBED_BATCH_SIZE):
+        response = client.embeddings.create(model=config.EMBED_MODEL, input=texts[i : i + config.EMBED_BATCH_SIZE])
+        vectors.extend(item.embedding for item in sorted(response.data, key=lambda d: d.index))
+    return vectors
+
+
 _async_clients: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, AsyncOpenAI]" = weakref.WeakKeyDictionary()
 
 

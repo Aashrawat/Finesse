@@ -1,4 +1,4 @@
-"""Settings for the knowledge-base chatbot. Everything can be overridden from .env."""
+"""Settings for Finesse chat and conversation attachments. Values can be overridden from .env."""
 
 import os
 
@@ -45,7 +45,7 @@ CHUNK_TOKENS = _int("KB_CHUNK_TOKENS", 700)  # 500-800
 CHUNK_OVERLAP = _int("KB_CHUNK_OVERLAP", 100)
 EMBED_BATCH_SIZE = _int("KB_EMBED_BATCH_SIZE", 64)
 
-# --- Files attached to a chat message (like ChatGPT / Claude) ----------------------------------
+# --- Files attached to an individual conversation --------------------------------------------
 MAX_ATTACH_MB = _int("KB_MAX_ATTACH_MB", 25)  # per file
 MAX_ATTACH_FILES = _int("KB_MAX_ATTACH_FILES", 6)  # per message
 MAX_ATTACH_IMAGES = _int("KB_MAX_ATTACH_IMAGES", 4)  # per message
@@ -62,7 +62,7 @@ IMAGE_TIMEOUT = _float("KB_IMAGE_TIMEOUT", 240.0)  # seconds; high quality image
 IMAGE_RATE_LIMIT = _int("KB_IMAGE_RATE_LIMIT", 10)  # images per hour per session (they cost real money)
 GUEST_IMAGES = _bool("KB_GUEST_IMAGES", False)  # may visitors who aren't logged in generate images?
 
-# --- Spoken replies (Pro and Premium) ------------------------------------------------------------
+# --- Spoken replies (Pro) ------------------------------------------------------------------------
 SPEECH_MODEL = os.getenv("KB_SPEECH_MODEL", "gpt-4o-mini-tts")
 SPEECH_VOICE = os.getenv("KB_SPEECH_VOICE", "alloy")
 SPEECH_MAX_CHARS = _int("KB_SPEECH_MAX_CHARS", 4000)  # OpenAI TTS is billed by characters
@@ -73,13 +73,15 @@ GUEST_MAX_TOKENS = _int("KB_GUEST_MAX_TOKENS", 1000)  # tokens of chat text (the
 GUEST_USAGE_PATH = os.getenv("KB_GUEST_USAGE", os.path.join("data", "guest_usage.json"))
 GUEST_LIMIT_MESSAGE = "You've reached the free limit for guests. Log in to explore more."
 
-# --- Plans (Free / Pro / Premium: see core/kb/plans.py for the models and daily limits) ---------------
+# --- Plans (Free / Pro: see core/kb/plans.py for the models and daily limits) -------------------------
 PLAN_USAGE_PATH = os.getenv("KB_PLAN_USAGE", os.path.join("data", "plan_usage.json"))
 # Lets a logged-in user switch their own plan without paying. For development and demos only: leave it off
 # in production until real payments are connected.
 PLAN_DEV_SWITCH = _bool("PLANS_DEV_SWITCH", False)
-# How hard the newer (gpt-5 / gpt-6) models think before answering: minimal|low|medium|high. Lower = faster.
-REASONING_EFFORT = os.getenv("KB_REASONING_EFFORT", "low")
+# Medium balances explanation quality and latency for the supported reasoning models.
+REASONING_EFFORT = os.getenv("KB_REASONING_EFFORT", "medium")
+# Chat Completions counts both visible output and internal reasoning against this budget.
+MAX_COMPLETION_TOKENS = max(1, _int("KB_MAX_COMPLETION_TOKENS", 8192))
 
 # --- Vector DB (ChromaDB, local) ----------------------------------------------
 CHROMA_PATH = os.getenv("KB_CHROMA_PATH", os.path.join("data", "kb_chroma"))
@@ -92,7 +94,7 @@ RERANK = _bool("KB_RERANK", False)  # LLM rerank of 2x candidates; adds one call
 
 # --- Conversation memory -----------------------------------------------------
 HISTORY_TURNS = _int("KB_HISTORY_TURNS", 6)  # last N user/assistant exchanges sent to the model
-HISTORY_TOKEN_BUDGET = _int("KB_HISTORY_TOKEN_BUDGET", 1500)
+HISTORY_TOKEN_BUDGET = _int("KB_HISTORY_TOKEN_BUDGET", 16000)
 CHATS_DIR = os.getenv("KB_CHATS_DIR", os.path.join("data", "chats"))
 
 # --- Limits / logging ----------------------------------------------------------
@@ -101,21 +103,33 @@ INGEST_RATE_LIMIT = _int("KB_INGEST_RATE_LIMIT", 3)  # per minute per session
 MAX_MESSAGE_CHARS = _int("KB_MAX_MESSAGE_CHARS", 4000)
 REQUEST_LOG = os.getenv("KB_REQUEST_LOG", os.path.join("logs", "chat_requests.jsonl"))
 
-# Used instead of SYSTEM_PROMPT when the conversation has attached files
+# Shared answer guidance for ordinary chat and attachments.
+ANSWER_STYLE = (
+    "Give accurate, clear, and sufficiently detailed answers. Match the depth to the user's question "
+    "and any requested length. For a concept, start with a simple definition, explain how it works "
+    "and why or when it is useful, and include a practical example when helpful. For programming "
+    "questions, include usable code when appropriate and explain the important parts. For complex "
+    "tasks, explain the solution in clear steps and discuss relevant tradeoffs. Do not stop at a "
+    "superficial overview when the user asks for an explanation. Use simple language and markdown "
+    "where it improves readability. Keep simple questions and explicitly requested short answers "
+    "brief. Avoid repetition, filler, and forcing the same structure onto every answer."
+)
+
+# Used instead of SYSTEM_PROMPT when the conversation has attached files.
 ATTACH_SYSTEM_PROMPT = (
-    "You are a helpful, friendly assistant. The user has attached files to this conversation: documents "
+    "You are Finesse, a helpful, knowledgeable assistant. The user has attached files to this conversation: documents "
     "(their text is provided below) and images (shown in the messages). Answer from those files, looking "
     "carefully at images and reading document text closely. When you use a document, cite it as "
     "[source: filename, page N] (leave out the page if it has none). If the files don't contain the answer, "
     "say so; you may still help from general knowledge, but make clear which part is not from the files. "
-    "Keep answers clear and concise, and use markdown for formatting."
-)
+    "Do not invent file contents, facts, or sources. "
+) + ANSWER_STYLE
 
-# The system prompt, exactly as specified
+# General chat has no shared document library or knowledge-base context.
 SYSTEM_PROMPT = (
-    "You are a helpful, friendly assistant. Answer using the provided context whenever it is relevant, "
-    "and cite sources as [source: filename, page]. If the context does not contain the answer, say you "
-    "don't have that information in the knowledge base instead of guessing. You may answer general "
-    "conversational questions (greetings, clarifications) without context. Keep answers clear and concise, "
-    "and use markdown for formatting."
-)
+    "You are Finesse, a helpful, friendly general-purpose assistant. Help with writing, coding, "
+    "explanations, brainstorming, and everyday questions. Use this conversation's history to understand "
+    "follow-up questions. Only refer to user documents when they have been attached to this conversation. "
+    "Be honest about uncertainty and do not invent facts or sources. Do not claim to have searched "
+    "the web or used external tools unless their results are actually provided. "
+) + ANSWER_STYLE

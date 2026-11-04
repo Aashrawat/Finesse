@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0B0C10" />
+    <meta name="theme-color" content="#1B1C1A" />
+    <meta name="description" content="Finesse is your space to think, create, and explore. Bring a question, a document, or an idea and see where it takes you." />
     <link rel="icon" type="image/png" href="/logo.png" />
     <script>
       // Paint the saved day/night mode and accent colour before the page shows (no flash). Keep in step with src/lib/theme.ts.
@@ -16,10 +17,10 @@
           d.style.setProperty("--color-lime", t[m].accent);
           d.style.setProperty("--color-on-accent", t[m].on);
         }
-        if (m === "light") document.querySelector('meta[name="theme-color"]').setAttribute("content", "#FFFFFF");
+        if (m === "light") document.querySelector('meta[name="theme-color"]').setAttribute("content", "#F7F5F0");
       } catch (e) {}
     </script>
-    <title>Finesse · AI video assistant</title>
+    <title>Finesse</title>
   </head>
   <body>
     <div id="root"></div>

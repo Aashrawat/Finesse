@@ -1,14 +1,12 @@
 """Subscription plans: which OpenAI model answers, and how much a user may use per day.
 
-Free  -> gpt-4o-mini (cheap, fast)
-Pro   -> gpt-5.5     (stronger)
-Premium -> gpt-6.1-sol (the newest, most capable model this account can use)
+Free uses its default model. Pro can choose from a server-configured model list.
 
 Every model name and limit can be changed from .env (KB_PLAN_PRO_MODEL, KB_PLAN_PRO_MESSAGES, ...), so the
 numbers can follow your real API costs. Visitors who are not logged in use the Free model (and have their own
 smaller allowance, see core.kb.guest).
 
-Paying for a plan is not connected yet: `plan` is a field on the user, changed by `PLANS_DEV_SWITCH` or by hand.
+The retired Premium tier is treated as Pro for existing accounts.
 """
 
 import os
@@ -54,7 +52,7 @@ PLANS: dict[str, Plan] = {
         daily_messages=_int("KB_PLAN_FREE_MESSAGES", 30),
         daily_images=_int("KB_PLAN_FREE_IMAGES", 0),
         history_turns=_int("KB_PLAN_FREE_HISTORY_TURNS", 6),
-        history_tokens=_int("KB_PLAN_FREE_HISTORY_TOKENS", 1500),
+        history_tokens=_int("KB_PLAN_FREE_HISTORY_TOKENS", _int("KB_HISTORY_TOKEN_BUDGET", 16000)),
         voice_replies=False,
         research=False,
         features=(
@@ -71,47 +69,71 @@ PLANS: dict[str, Plan] = {
         daily_messages=_int("KB_PLAN_PRO_MESSAGES", 300),
         daily_images=_int("KB_PLAN_PRO_IMAGES", 30),
         history_turns=_int("KB_PLAN_PRO_HISTORY_TURNS", 20),
-        history_tokens=_int("KB_PLAN_PRO_HISTORY_TOKENS", 8000),
+        history_tokens=_int("KB_PLAN_PRO_HISTORY_TOKENS", 32000),
         voice_replies=True,
-        research=False,
+        research=True,
         features=(
             ("Higher AI message limits", False),
-            ("Advanced AI models", False),
+            ("Choose between advanced AI models", False),
             ("Image generation", False),
             ("Voice input", False),
             ("Voice responses", False),
             ("PDF analysis", False),
-            ("Web research", False),
+            ("Advanced research", False),
             ("Longer conversation context", False),
             ("Faster processing", False),
         ),
     ),
-    "premium": Plan(
-        id="premium", name="Premium", price=24.99, tagline="For power users",
-        chat_model=os.getenv("KB_PLAN_PREMIUM_MODEL", "gpt-6.1-sol"),
-        daily_messages=_int("KB_PLAN_PREMIUM_MESSAGES", 1000),
-        daily_images=_int("KB_PLAN_PREMIUM_IMAGES", 100),
-        history_turns=_int("KB_PLAN_PREMIUM_HISTORY_TURNS", 40),
-        history_tokens=_int("KB_PLAN_PREMIUM_HISTORY_TOKENS", 16000),
-        voice_replies=True,
-        research=True,
-        features=(
-            ("Everything in Pro", False),
-            ("Newest, most powerful AI model", False),
-            ("Advanced research agent", False),
-            ("Higher image-generation limits", False),
-            ("Large document analysis", False),
-            ("Priority processing", False),
-            ("More memory and context", False),
-        ),
-    ),
 }
-ORDER = ("free", "pro", "premium")
+ORDER = ("free", "pro")
+
+# Server-owned allowlist. Never accept an arbitrary model id from the browser.
+# KB_PLAN_PRO_MODEL remains the default; KB_PLAN_PRO_MODELS customizes the other choices.
+PRO_MODELS = tuple(dict.fromkeys([
+    PLANS["pro"].chat_model,
+    *(model.strip() for model in os.getenv("KB_PLAN_PRO_MODELS", "gpt-6.1-terra,gpt-6.1-sol").split(",") if model.strip()),
+]))
+MODEL_INFO = {
+    "gpt-4o-mini": ("GPT-4o mini", "Quick help with everyday questions"),
+    "gpt-5.5": ("GPT-5.5", "Advanced reasoning, writing, and code"),
+    "gpt-6.1-terra": ("GPT-6.1 Terra", "Fast writing and visual reasoning"),
+    "gpt-6.1-sol": ("GPT-6.1 Sol", "Complex reasoning and coding"),
+}
+
+
+class ModelSelectionError(ValueError):
+    def __init__(self, message: str, status: int):
+        super().__init__(message)
+        self.status = status
+
+
+def model_options(plan: Plan) -> list[dict]:
+    free_model = PLANS["free"].chat_model
+    return [
+        {
+            "id": model,
+            "name": MODEL_INFO.get(model, (model, "Configured chat model"))[0],
+            "description": MODEL_INFO.get(model, (model, "Configured chat model"))[1],
+            "pro_only": model != free_model,
+            "available": model == free_model or plan.id == "pro",
+        }
+        for model in dict.fromkeys([free_model, *PRO_MODELS])
+    ]
+
+
+def select_model(plan: Plan, requested: str | None = None) -> str:
+    selected = (requested or "").strip() or plan.chat_model
+    option = next((model for model in model_options(plan) if model["id"] == selected), None)
+    if option is None:
+        raise ModelSelectionError("That model isn't available. Choose one from the model picker.", 422)
+    if not option["available"]:
+        raise ModelSelectionError("Smarter GPT models are available with Pro. Upgrade to choose this model.", 403)
+    return selected
 
 
 def get(plan_id: str | None) -> Plan:
     """The plan with this id; anything unknown or missing counts as Free."""
-    return PLANS.get(plan_id or "", PLANS["free"])
+    return PLANS.get("pro" if plan_id == "premium" else plan_id or "", PLANS["free"])
 
 
 def for_user(user: dict | None) -> Plan:
@@ -124,6 +146,7 @@ def status(user_id: str, plan: Plan) -> dict:
     messages, images = usage.today(user_id)
     return {
         "plan": plan.id, "plan_name": plan.name, "model": plan.chat_model,
+        "models": model_options(plan),
         "messages_used": messages, "messages_limit": plan.daily_messages,
         "images_used": images, "images_limit": plan.daily_images,
         "voice_replies": plan.voice_replies, "research": plan.research,

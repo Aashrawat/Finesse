@@ -1,8 +1,3 @@
-"""HTTP endpoints for the multi-agent research feature.
-
-Runs `core.research.pipeline` as a background job (polled by the UI) and keeps finished
-reports as JSON files so they survive restarts, like the video archive does.
-"""
 import json
 import os
 import re
@@ -72,7 +67,7 @@ def start_research(body: ResearchRequest, request: Request):
     if user is None or not plan.research:
         raise HTTPException(
             status_code=403,
-            detail={"code": "plan_required", "message": "The advanced research agent is part of Premium."},
+            detail={"code": "plan_required", "message": "Advanced research is part of Pro."},
         )
     try:
         require_tavily_key()
