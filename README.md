@@ -12,15 +12,6 @@ Finesse chat uses the current conversation and its attachments. Shared knowledge
 
 Answers adapt to the question: explanations can include examples, code, and useful steps, while simple questions stay brief. The Pro picker controls which GPT answers each message.
 
-Optional chat settings in `.env`:
-
-```dotenv
-KB_MAX_COMPLETION_TOKENS=8192
-KB_REASONING_EFFORT=medium
-KB_PLAN_FREE_HISTORY_TOKENS=16000
-KB_PLAN_PRO_HISTORY_TOKENS=32000
-```
-
 The completion budget includes the model's reasoning tokens as well as the visible answer. History is kept within each plan's turn and token limits; older turns are summarized in the background. Restart the backend after changing these settings.
 
 Automatic MCP tools are integrated into the existing chat: Google Search via SerpAPI and Wikipedia.
